@@ -3,7 +3,7 @@
 % using the same codec as in the MP4 files ("copy" the codec when
 % translating, e.g. using https://cloudconvert.com/mp4-to-avi
 %
-function VidTest22(videoFile)
+function FLvideo(videoFile)
 
     if nargin<1, videoFile = ''; end % Video file path
     
@@ -109,7 +109,8 @@ function VidTest22(videoFile)
             %disp(['Audio Format: ', v.AudioFormat]); % Audio information, if available
             % Extract audio signal
             [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
-
+            audioSignal = filterMRINoise(audioSignal, audioFs); % Filter out MRI scanner noise  
+            disp('Audio filtered to remove scanner noise')
             % Get total frames of video
             numFrames = v.NumFrames; %floor(v.Duration * v.FrameRate); % NOTE: v.Duration is not an integer multiple of 1/FrameRate
             FrameRate = v.FrameRate; %numFrames/v.Duration;
@@ -504,5 +505,28 @@ function VidTest22(videoFile)
         disp(['Loading new video file: ', newVideoFile]);
         data=initialize(newVideoFile, hFig);
 
+    end
+
+    function filteredAudio = filterMRINoise(audioSignal, sampleRate)
+    % Design a series of notch filters to remove MRI noise frequencies
+    % Adjust based on spectrum analysis
+    noiseFreqs = [120, 240, 360, 480, 600]; % Include more harmonics if necessary
+    bandwidth = 10; % Increase bandwidth for wider attenuation
+    
+    % Start with the original audio signal
+    filteredAudio = audioSignal;
+    
+    % Apply a notch filter for each noise frequency
+    for f = noiseFreqs
+        wo = f / (sampleRate / 2); % Normalize the frequency
+        bw = bandwidth / (sampleRate / 2); % Normalize the bandwidth
+        [b, a] = iirnotch(wo, bw); % Design the notch filter
+        filteredAudio = filter(b, a, filteredAudio); % Apply the filter
+    end
+    
+    % Optional: Low-pass filter to reduce high-frequency noise
+    cutoffFreq = 1000; % Set low-pass cutoff frequency (Hz)
+    [b, a] = butter(6, cutoffFreq / (sampleRate / 2), 'low');
+    filteredAudio = filter(b, a, filteredAudio); % Apply the low-pass filter
     end
 end
