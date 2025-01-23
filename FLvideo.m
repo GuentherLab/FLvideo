@@ -22,18 +22,15 @@ function FLvideo(videoFile)
                 if data.currentFrame~=currentFrame,
                     if (currentFrame==1&&data.currentFrame>1) || currentFrame >= data.endFrame % if audio is stopped (but not paused)
                         currentFrame = data.endFrame; %min(data.numFrames,data.currentFrame);
+                        set(data.handles_play, 'cdata', data.handles_icons{1});
                         data.isPlaying = false; % Stop playback
                     end
 
                     % Update video and lines
                     % Update video frame
                     data.currentFrame=currentFrame ;
-                    frame = data.frameCache{currentFrame};
-                    if isvalid(data.hVideo) % Ensure the hVideo object is valid
-                        set(data.hVideo, 'CData', frame); % Update video frame
-                    else
-                        disp('invalid video frame');
-                    end
+                    frame = getframeCache(currentFrame);
+                    set(data.hVideo, 'CData', frame); % Update video frame
 
                     timeAtCurrentFrame = (currentFrame+[-1 -1 0 0]) / data.FrameRate; % note: displays time at midpoint of frame
                     set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
@@ -51,14 +48,19 @@ function FLvideo(videoFile)
 
 
     % Callback Functions (NOTE: they all have access to the shared variable "data")
-    function data = initialize(videoFile, hFig)
-        data=[];
+    function varargout = initialize(videoFile, hFig)
         frameCache={};
         isready='off';
+        layout=1;
+        motionHighlight=1;
         % Create the main figure for video, audio, and controls
         if nargin<2, 
             hFig = figure('units','norm','Position', [.25, .1, .5, .8], 'MenuBar', 'none', 'NumberTitle', 'off', 'Name', 'Video Player','color','w');
+        else
+            try, layout=get(data.handles_layout,'value'); end
+            try, motionHighlight=get(data.handles_motionhighlight,'value'); end
         end
+        data=[];
         if ~isempty(videoFile), 
             try
                 switch(regexprep(videoFile,'^.*\.',''))
@@ -112,28 +114,39 @@ function FLvideo(videoFile)
         data.handles_buttonPanel = uipanel('Position', [0, 0, 1, 0.15], 'Parent', hFig); % Slightly shorter panel for two rows of buttons
 
         % Top row: Playback buttons
-        uicontrol('Style', 'pushbutton', 'String', 'Play/Pause', 'Position', [20, 70, 100, 40], ...
-            'Callback', @(src, event) togglePlayPause(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
-
-        uicontrol('Style', 'pushbutton', 'String', 'Next Frame', 'Position', [130, 70, 100, 40], ...
-            'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
-
-        uicontrol('Style', 'pushbutton', 'String', 'Previous Frame', 'Position', [240, 70, 100, 40], ...
-            'Callback', @(src, event) previousFrame(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
-
-        uicontrol('Style', 'pushbutton', 'String', 'Rewind', 'Position', [350, 70, 100, 40], ...
+        uicontrol('Style', 'pushbutton', 'String', 'Load New Video', 'Position', [20, 70, 210, 40], ...
+            'Callback', @(src, event) loadNewVideo(hFig), 'Parent', data.handles_buttonPanel);
+        
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_rest.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
+        uicontrol('Style', 'pushbutton', 'tooltip', 'Rewind', 'Position', [270, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) rewindVideo(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
 
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_back.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
+        uicontrol('Style', 'pushbutton', 'tooltip', 'Previous Frame', 'Position', [310, 70, 40, 40], 'cdata', temp, ...
+            'Callback', @(src, event) previousFrame(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_play.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; 
+        data.handles_icons{1}=temp; 
+        data.handles_play=uicontrol('Style', 'pushbutton', 'tooltip', 'Play/Pause', 'Position', [350, 70, 40, 40], 'cdata', temp, ...
+            'Callback', @(src, event) togglePlayPause(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_paus.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; 
+        data.handles_icons{2}=temp;
+
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_forw.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
+        uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
+            'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+
         uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [470, 80, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        uicontrol('Style', 'slider', 'Min', 0.1, 'Max', 2, 'Value', 1, 'Position', [580, 80, 100, 20], ...
+        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [580, 80, 100, 20], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
 
-        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [470, 50, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', 1, 'Position', [580, 50, 100, 20], ...
-            'Callback', @(src, event) changeLayout(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [470, 60, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [580, 60, 100, 20], ...
+            'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel, 'enable',isready);
         
-        data.handles_zoom=uicontrol('Style', 'pushbutton', 'string', 'Zoom In/Out', 'value', 0, 'Position', [500, 20, 180, 20], ...
-            'Callback', @(src, event) zoomIn, 'Parent', data.handles_buttonPanel, 'enable','off');
+        uicontrol('Style', 'text', 'String', 'Motion Highlight', 'Position', [470, 40, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [580, 40, 100, 20], ...
+            'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
         
         % Bottom row: Selection and save controls
         uicontrol('Style', 'pushbutton', 'String', 'Select Points', 'Position', [20, 20, 100, 40], ...
@@ -146,17 +159,22 @@ function FLvideo(videoFile)
             'Position', [240, 20, 120, 40], 'Enable', 'off', ...
             'Callback', @(src, event) playSelection(hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'pushbutton', 'String', 'Load New Video', 'Position', [360, 20, 120, 40], ...
-            'Callback', @(src, event) loadNewVideo(hFig), 'Parent', data.handles_buttonPanel);
+        data.handles_zoom=uicontrol('Style', 'pushbutton', 'string', 'Zoom In/Out', 'value', 0, 'Position', [370, 20, 100, 40], ...
+            'Callback', @(src, event) zoomIn, 'Parent', data.handles_buttonPanel, 'enable','off');
         
         if ~isempty(frameCache) % Displays video and audio data
             % Calculate global motion based on pixel differences
             globalMotion = zeros(1, numFrames - 1); % Preallocate for speed
+            frameMotion={};
+            maxframeMotion=0;
             for i = 1:numFrames - 1
                 frame1 = double(rgb2gray(frameCache{i})); % Convert frame to grayscale
                 frame2 = double(rgb2gray(frameCache{i + 1})); % Convert next frame to grayscale
-                globalMotion(i) = sum(abs(frame1(:) - frame2(:)).^2); % Compute sum of absolute differences (SAD)
+                frameMotion{i}=abs(frame1 - frame2).^2;
+                maxframeMotion=max(maxframeMotion,max(frameMotion{i}(:)));
+                globalMotion(i) = sum(frameMotion{i}(:)); % Compute sum of absolute differences (SAD)
             end
+            frameMotion=cellfun(@(x)x/maxframeMotion,frameMotion,'uni',0);
             %globalMotion = [globalMotion, globalMotion(end)]; % Match the length to numFrames
 
             % Create an axes for the video display
@@ -211,8 +229,11 @@ function FLvideo(videoFile)
             data.SampleQueue = 0;
             data.hVideo = hVideo;
             data.frameCache = frameCache;
+            data.frameMotion=frameMotion;
             data.frameLine = frameLine;
             data.motionFrameLine = motionFrameLine;
+            data.motionHighlight = motionHighlight;
+            data.layout = layout;
             data.audioYLim = audioYLim;
             data.motionYLim = motionYLim;
             data.zoomin = false;
@@ -222,9 +243,10 @@ function FLvideo(videoFile)
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
         end
-
-
+        changeLayout();
+        varargout={data};
     end
+
     function togglePlayPause(~, ~, hFig)
         % Retrieve the current state
 
@@ -233,15 +255,18 @@ function FLvideo(videoFile)
 
         if data.isPlaying
             % Start audio playback from the current time
+            if data.currentFrame==data.numFrames, data.currentFrame=1; end
             startSample = max(1, min(length(data.audioSignal)-1, 1+round((data.currentFrame-1)/data.FrameRate*data.SampleRate)));
             data.audioPlayer.SampleRate=data.SampleRate*data.playbackSpeed;
             data.endFrame=data.numFrames;
+            set(data.handles_play, 'cdata', data.handles_icons{2}); 
             zoomIn(false);
             play(data.audioPlayer, [startSample, length(data.audioSignal)]);
             if data.SampleQueue==0, data.SampleQueue=data.audioPlayer.CurrentSample-startSample; disp(data.SampleQueue); end
             mainLoop();
         else
             % Pause audio playback
+            set(data.handles_play, 'cdata', data.handles_icons{1}); 
             pause(data.audioPlayer);
         end
 
@@ -252,7 +277,7 @@ function FLvideo(videoFile)
             if data.currentFrame < data.numFrames
                 data.currentFrame = data.currentFrame + 1;
                 currentFrameIndex = round(data.currentFrame);
-                frame = data.frameCache{currentFrameIndex};
+                frame = getframeCache(currentFrameIndex);
                 set(data.hVideo, 'CData', frame);
                 timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
                 set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
@@ -275,7 +300,7 @@ function FLvideo(videoFile)
             if data.currentFrame > 1
                 data.currentFrame = data.currentFrame - 1;
                 currentFrameIndex = round(data.currentFrame);
-                frame = data.frameCache{currentFrameIndex};
+                frame = getframeCache(currentFrameIndex);
                 set(data.hVideo, 'CData', frame);
                 timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
                 set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
@@ -291,7 +316,7 @@ function FLvideo(videoFile)
         if ~data.isPlaying,
             data.currentFrame = max(1, min(data.numFrames, ceil(thisTime(1) * data.FrameRate)));
             currentFrameIndex = round(data.currentFrame);
-            frame = data.frameCache{currentFrameIndex};
+            frame = getframeCache(currentFrameIndex);
             set(data.hVideo, 'CData', frame);
             timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
             set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
@@ -305,7 +330,7 @@ function FLvideo(videoFile)
         if ~data.isPlaying,
             data.currentFrame = 1;
             currentFrameIndex = round(data.currentFrame);
-            frame = data.frameCache{currentFrameIndex};
+            frame = getframeCache(currentFrameIndex);
             set(data.hVideo, 'CData', frame);
             timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
             set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
@@ -317,8 +342,9 @@ function FLvideo(videoFile)
     end
 
     function adjustPlaybackSpeed(slider, ~, hFig)
-        if data.isPlaying, slider.Value=data.playbackSpeed;
-        else data.playbackSpeed = slider.Value;
+        speeds=[0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 5];
+        if data.isPlaying, slider.Value=find(speeds==data.playbackSpeed,1);
+        else data.playbackSpeed = speeds(slider.Value);
         end
     end
 
@@ -336,8 +362,16 @@ function FLvideo(videoFile)
         end
     end
 
-    function changeLayout(~, ~, hFig)
-        switch(get(data.handles_layout,'value'))
+    function changeMotionHighlight(~, ~, hFig);
+        data.motionHighlight=get(data.handles_motionhighlight,'value');
+        set(data.hVideo, 'CData', getframeCache(data.currentFrame));
+    end
+
+    function changeLayout(layout)
+        if nargin<1, layout=get(data.handles_layout,'value'); end
+        data.layout=layout; 
+        set(data.handles_layout,'value',layout);
+        switch(data.layout)
             case 1, % standard layout
                 set(data.handles_hFig,'Position',[.25, .1, .5, .8]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.55, 1, 0.4]);
@@ -368,7 +402,7 @@ function FLvideo(videoFile)
     end
 
     function selectPoints(hFig)
-        % Retrieve current state
+        zoomIn(false);
 
         % Save the current axis limits
         currentAudioXLim = xlim(data.handles_audioPanel);
@@ -603,5 +637,18 @@ function FLvideo(videoFile)
         disp(['Loading new video file: ', newVideoFile]);
         data=initialize(newVideoFile, hFig);
 
+    end
+
+    function frame = getframeCache(currentFrameIndex) % mixes video frame image with motion highlight
+        frame = data.frameCache{currentFrameIndex};
+        if data.motionHighlight>1, 
+            colors=[0 0 0; 1 0 0; 1 1 0];
+            color=colors(data.motionHighlight,:);
+            if currentFrameIndex==1, dframe=sqrt(data.frameMotion{currentFrameIndex});
+            elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotion{currentFrameIndex-1});
+            else dframe=sqrt((data.frameMotion{currentFrameIndex}+data.frameMotion{currentFrameIndex-1})/2);
+            end
+            frame=uint8(cat(3, round((1-dframe).*double(frame(:,:,1))+255*dframe*color(1)), round((1-dframe).*double(frame(:,:,2))+255*dframe*color(2)), round((1-dframe).*double(frame(:,:,3))+255*dframe*color(3)) ));
+        end
     end
 end
