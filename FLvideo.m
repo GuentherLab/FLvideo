@@ -242,8 +242,8 @@ function FLvideo(videoFile)
 
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
+            changeLayout();
         end
-        changeLayout();
         varargout={data};
     end
 
