@@ -9,8 +9,9 @@ function FLvideo(videoFile)
     
     data = initialize(videoFile); % initializes GUI (and data is videoFile is specified)
 
-    mainLoop(); % Main loop for handling video playback
+    % Callback Functions (NOTE: they all have access to the shared variable "data")
 
+    % function handling real-time update of audio&video display
     function mainLoop(varargin)
         countidle=0;
         while ishandle(data.handles_hFig)&&countidle<32
@@ -47,7 +48,7 @@ function FLvideo(videoFile)
     end
 
 
-    % Callback Functions (NOTE: they all have access to the shared variable "data")
+    % function handling initialization of audio&video display
     function varargout = initialize(videoFile, hFig)
         frameCache={};
         isready='off';
@@ -119,34 +120,34 @@ function FLvideo(videoFile)
         
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_rest.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
         uicontrol('Style', 'pushbutton', 'tooltip', 'Rewind', 'Position', [270, 70, 40, 40], 'cdata', temp, ...
-            'Callback', @(src, event) rewindVideo(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) rewindVideo(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_back.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
         uicontrol('Style', 'pushbutton', 'tooltip', 'Previous Frame', 'Position', [310, 70, 40, 40], 'cdata', temp, ...
-            'Callback', @(src, event) previousFrame(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) previousFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_play.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; 
         data.handles_icons{1}=temp; 
         data.handles_play=uicontrol('Style', 'pushbutton', 'tooltip', 'Play/Pause', 'Position', [350, 70, 40, 40], 'cdata', temp, ...
-            'Callback', @(src, event) togglePlayPause(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) togglePlayPause(src, event, hFig), 'Parent', data.handles_buttonPanel);
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_paus.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; 
         data.handles_icons{2}=temp;
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_forw.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
         uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
-            'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [470, 80, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
         uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [580, 80, 100, 20], ...
-            'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [470, 60, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
         data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [580, 60, 100, 20], ...
-            'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel);
         
         uicontrol('Style', 'text', 'String', 'Motion Highlight', 'Position', [470, 40, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
         data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [580, 40, 100, 20], ...
-            'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
+            'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         % Bottom row: Selection and save controls
         uicontrol('Style', 'pushbutton', 'String', 'Select Points', 'Position', [20, 20, 100, 40], ...
@@ -242,13 +243,18 @@ function FLvideo(videoFile)
 
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
-            changeLayout();
+            if layout~=1, changeLayout(); end
+        else
+            data.handles_videoPanel=[];
+            data.handles_audioPanel=[];
+            data.handles_motionPanel=[];
         end
+        data.isPlaying=false;
         varargout={data};
     end
 
     function togglePlayPause(~, ~, hFig)
-        % Retrieve the current state
+        if ~isfield(data,'audioPlayer'), return; end
 
         % Toggle playback state
         data.isPlaying = ~data.isPlaying;
@@ -273,6 +279,7 @@ function FLvideo(videoFile)
     end
 
     function nextFrame(~, ~, hFig)
+        if ~isfield(data,'audioPlayer'), return; end
         if ~data.isPlaying,
             if data.currentFrame < data.numFrames
                 data.currentFrame = data.currentFrame + 1;
@@ -296,6 +303,7 @@ function FLvideo(videoFile)
     end
 
     function previousFrame(~, ~, hFig)
+        if ~isfield(data,'audioPlayer'), return; end
         if ~data.isPlaying,
             if data.currentFrame > 1
                 data.currentFrame = data.currentFrame - 1;
@@ -312,6 +320,7 @@ function FLvideo(videoFile)
     end
 
     function thisFrame(thisTime)
+        if ~isfield(data,'audioPlayer'), return; end
         if nargin<1||isempty(thisTime), thisTime=get(gca,'currentpoint'); end
         if ~data.isPlaying,
             data.currentFrame = max(1, min(data.numFrames, ceil(thisTime(1) * data.FrameRate)));
@@ -327,6 +336,7 @@ function FLvideo(videoFile)
     end
 
     function rewindVideo(~, ~, hFig)
+        if ~isfield(data,'audioPlayer'), return; end
         if ~data.isPlaying,
             data.currentFrame = 1;
             currentFrameIndex = round(data.currentFrame);
@@ -364,34 +374,37 @@ function FLvideo(videoFile)
 
     function changeMotionHighlight(~, ~, hFig);
         data.motionHighlight=get(data.handles_motionhighlight,'value');
-        set(data.hVideo, 'CData', getframeCache(data.currentFrame));
+        if isfield(data,'hVideo'), set(data.hVideo, 'CData', getframeCache(data.currentFrame)); end
     end
 
     function changeLayout(layout)
         if nargin<1, layout=get(data.handles_layout,'value'); end
+        if ~isfield(data,'layout'), data.layout=1; end
+        if ~isfield(data,'figureposition'), data.figureposition=[.25, .1, .5, .8]; end
+        if data.layout==1, data.figureposition=get(data.handles_hFig,'Position'); end
         data.layout=layout; 
         set(data.handles_layout,'value',layout);
         switch(data.layout)
             case 1, % standard layout
-                set(data.handles_hFig,'Position',[.25, .1, .5, .8]);
+                set(data.handles_hFig,'Position',data.figureposition);
+                set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.55, 1, 0.4]);
                 set(data.handles_audioPanel,'Position', [0.1, 0.4, 0.8, 0.1]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.25, 0.8, 0.1]);
-                set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
                 drawnow;
             case 2, % maximized (horizontal layout)
                 set(data.handles_hFig,'Position',[0.01, 0, .98, .975]);
+                set(data.handles_buttonPanel, 'Position', [0.575, 0.025, 0.4, 0.15]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.0, 0.55, 1]);
                 set(data.handles_audioPanel,'Position', [0.575, 0.65, 0.4, 0.25]);
                 set(data.handles_motionPanel, 'Position', [0.575, 0.275, 0.4, 0.25]);
-                set(data.handles_buttonPanel, 'Position', [0.575, 0.025, 0.4, 0.15]);
                 drawnow;
             case 3, % maximized (vertical layout)
                 set(data.handles_hFig,'Position',[.01, 0, .98, .975]);
+                set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.4, 1, 0.6]);
                 set(data.handles_audioPanel,'Position', [0.1, 0.275, 0.8, 0.075]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.175, 0.8, 0.075]);
-                set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
                 drawnow;
                 % set(data.handles_videoPanel,'Position', [0.0, 0.15, 0.45, 0.85]);
                 % set(data.handles_audioPanel,'Position', [0.50, 0.325, 0.20, 0.5]);
