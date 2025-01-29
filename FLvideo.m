@@ -3,11 +3,16 @@
 % using the same codec as in the MP4 files ("copy" the codec when
 % translating, e.g. using https://cloudconvert.com/mp4-to-avi
 %
+% To save mp4 files ffmpeg (https://www.ffmpeg.org) must be installed
+% (see https://phoenixnap.com/kb/ffmpeg-windows for instructions on Windows)
+% or VLC (https://www.videolan.org/vlc/)
+%
+
 function FLvideo(videoFile)
 
     if nargin<1, videoFile = ''; end % Video file path
     
-    data = initialize(videoFile); % initializes GUI (and data is videoFile is specified)
+    data = initialize(videoFile); % initializes GUI (and data if videoFile is specified)
 
     % Callback Functions (NOTE: they all have access to the shared variable "data")
 
@@ -54,12 +59,14 @@ function FLvideo(videoFile)
         isready='off';
         layout=1;
         motionHighlight=1;
+        motionMeasure=1;
         % Create the main figure for video, audio, and controls
         if nargin<2, 
             hFig = figure('units','norm','Position', [.25, .1, .5, .8], 'MenuBar', 'none', 'NumberTitle', 'off', 'Name', 'Video Player','color','w');
         else
             try, layout=get(data.handles_layout,'value'); end
             try, motionHighlight=get(data.handles_motionhighlight,'value'); end
+            try, motionMeasure=get(data.handles_motionmeasure,'value'); end
         end
         data=[];
         if ~isempty(videoFile), 
@@ -101,6 +108,7 @@ function FLvideo(videoFile)
                         end
                 end
                 isready='on';
+                audioSignal2 = filterMRINoise(audioSignal, audioFs);
             catch me
                 errordlg([{'Problem reading video file:'} getReport(me,'basic','hyperlinks','off')], 'Video Player error');
                 isready='off';
@@ -137,16 +145,24 @@ function FLvideo(videoFile)
         uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [470, 80, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [580, 80, 100, 20], ...
+        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [490, 95, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [600, 95, 130, 20], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [470, 60, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [580, 60, 100, 20], ...
+        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [490, 75, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [600, 75, 130, 20], ...
             'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel);
         
-        uicontrol('Style', 'text', 'String', 'Motion Highlight', 'Position', [470, 40, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [580, 40, 100, 20], ...
+        uicontrol('Style', 'text', 'String', 'Audio signal', 'Position', [490, 55, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'Value', 1, 'string', {'raw audio','MRI denoised audio'}, 'Position', [600, 55, 130, 20], ...
+            'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', data.handles_buttonPanel);
+
+        uicontrol('Style', 'text', 'String', 'Motion Intensity', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_motionmeasure=uicontrol('Style', 'popupmenu', 'string', {'velocity of movements', 'acceleration of movements'}, 'Value', motionMeasure, 'Position', [600, 35, 130, 20], ...
+            'Callback', @(src, event) changeMotionMeasure(src, event, hFig), 'Parent', data.handles_buttonPanel);
+        
+        uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 15, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [600, 15, 130, 20], ...
             'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         % Bottom row: Selection and save controls
@@ -166,16 +182,26 @@ function FLvideo(videoFile)
         if ~isempty(frameCache) % Displays video and audio data
             % Calculate global motion based on pixel differences
             globalMotion = zeros(1, numFrames - 1); % Preallocate for speed
+            globalMotion2 = globalMotion;
             frameMotion={};
+            frameMotion2={};
             maxframeMotion=0;
+            maxframeMotion2=0;
             for i = 1:numFrames - 1
                 frame1 = double(rgb2gray(frameCache{i})); % Convert frame to grayscale
                 frame2 = double(rgb2gray(frameCache{i + 1})); % Convert next frame to grayscale
                 frameMotion{i}=abs(frame1 - frame2).^2;
                 maxframeMotion=max(maxframeMotion,max(frameMotion{i}(:)));
-                globalMotion(i) = sum(frameMotion{i}(:)); % Compute sum of absolute differences (SAD)
+                globalMotion(i) = mean(frameMotion{i}(:)); % Compute mean of absolute values squared (MS)
+
+                if i>1, frame0 = double(rgb2gray(frameCache{i-1})); else frame0 = frame1; end
+                if i<numFrames-1, frame3 = double(rgb2gray(frameCache{i+2})); else frame3 = frame2; end
+                frameMotion2{i}=abs( (frame0 - frame1 - frame2 + frame3)/2 ).^2; 
+                maxframeMotion2=max(maxframeMotion2,max(frameMotion2{i}(:)));
+                globalMotion2(i) = mean(frameMotion2{i}(:)); % Compute mean of absolute values squared (MS)
             end
             frameMotion=cellfun(@(x)x/maxframeMotion,frameMotion,'uni',0);
+            frameMotion2=cellfun(@(x)x/maxframeMotion2,frameMotion2,'uni',0);
             %globalMotion = [globalMotion, globalMotion(end)]; % Match the length to numFrames
 
             % Create an axes for the video display
@@ -190,33 +216,34 @@ function FLvideo(videoFile)
 
             % Create a dedicated axes for the audio signal
             data.handles_audioPanel = axes('Position', [0.1, 0.4, 0.8, 0.1], 'Parent', hFig); % Move audio panel upward
-            audioPlot = plot((0:length(audioSignal)-1)/audioFs, audioSignal, 'b', 'Parent', data.handles_audioPanel); % Plot full audio signal
+            data.handles_audioPlot = plot((0:length(audioSignal)-1)/audioFs, audioSignal(:,1), 'b', 'Parent', data.handles_audioPanel); % Plot full audio signal
             hold(data.handles_audioPanel, 'on');
             frameLine = patch(data.handles_audioPanel, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
             xlim(data.handles_audioPanel, [0 totalDuration]); % Set x-axis limits based on audio duration
-            audioYLim = [-1, 1]*1.1*max(abs(audioSignal(:))); % Get the correct y-limits for the audio signal
-            ylim(data.handles_audioPanel, audioYLim); % Apply y-limits for the audio plot
+            audioYLim = [-1, 1]*1.1*max(max(abs(audioSignal2(:))),max(abs(audioSignal(:)))); % Get the correct y-limits for the audio signal
+            ylim(data.handles_audioPanel, [-1, 1]*1.1*max(max(abs(audioSignal)))); % Apply y-limits for the audio plot
             %xlabel(data.handles_audioPanel, 'Time (s)');
             ylabel(data.handles_audioPanel, 'Audio Signal Intensity');
             title(data.handles_audioPanel, 'Audio Signal with Current Frame');
             hold(data.handles_audioPanel, 'off');
             set(data.handles_audioPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1], 'xticklabel',[]);
-            set([data.handles_audioPanel; audioPlot(:)],'buttondownfcn',@(varargin)thisFrame);
+            set([data.handles_audioPanel; data.handles_audioPlot(:)],'buttondownfcn',@(varargin)thisFrame);
 
             % Create a dedicated axes for the global motion
             data.handles_motionPanel = axes('Position', [0.1, 0.25, 0.8, 0.1], 'Parent', hFig); % Move motion panel upward
-            motionPlot = plot(data.handles_motionPanel, (1:numFrames-1)/FrameRate, globalMotion, 'g'); % Plot global motion
+            data.handles_motionPlot = plot(data.handles_motionPanel, (1:numFrames-1)/FrameRate, globalMotion, 'g'); % Plot global motion
             hold(data.handles_motionPanel, 'on');
             motionFrameLine = patch(data.handles_motionPanel, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
             xlim(data.handles_motionPanel, [0 totalDuration]); % Set x-axis limits based on video duration
-            motionYLim = [0 1.1*max(globalMotion)]; % Calculate y-limits for the global motion
+            motionYLim = [0 1.1*max(globalMotion)]; % Calculate y-limits for the global motion velocity
+            motionYLim2 = [0 1.1*max(globalMotion2)]; % Calculate y-limits for the global motion acceleration
             ylim(data.handles_motionPanel, motionYLim); % Apply y-limits for the motion plot
             xlabel(data.handles_motionPanel, 'Time (s)');
             ylabel(data.handles_motionPanel, 'Motion Intensity');
             title(data.handles_motionPanel, 'Global Motion Across Frames');
             hold(data.handles_motionPanel, 'off');
             set(data.handles_motionPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
-            set([data.handles_motionPanel; motionPlot(:)],'buttondownfcn',@(varargin)thisFrame);
+            set([data.handles_motionPanel; data.handles_motionPlot(:)],'buttondownfcn',@(varargin)thisFrame);
 
             % Store information in shared "data" variable
             data.isPlaying = false;
@@ -225,21 +252,30 @@ function FLvideo(videoFile)
             data.numFrames = numFrames;
             data.FrameRate = FrameRate;
             data.audioSignal = audioSignal;
+            data.audioSignal1 = audioSignal;
+            data.audioSignal2 = audioSignal2;
             data.SampleRate = audioFs;
             data.totalDuration=totalDuration;
             data.SampleQueue = 0;
             data.hVideo = hVideo;
             data.frameCache = frameCache;
             data.frameMotion=frameMotion;
+            data.frameMotion2=frameMotion2;
+            data.globalMotion=globalMotion;
+            data.globalMotion2=globalMotion2;
             data.frameLine = frameLine;
             data.motionFrameLine = motionFrameLine;
             data.motionHighlight = motionHighlight;
+            data.motionMeasure = motionMeasure;
+            data.audioSignalSelect = 1;
             data.layout = layout;
             data.audioYLim = audioYLim;
-            data.motionYLim = motionYLim;
+            data.motionYLim = max(motionYLim, motionYLim2);
             data.zoomin = false;
             data.playbackSpeed = 1; % Default playback speed
-            data.audioPlayer = audioplayer(audioSignal, audioFs); % Create audioplayer object
+            data.audioPlayer1 = audioplayer(audioSignal, audioFs); % Create audioplayer object
+            data.audioPlayer2 = audioplayer(audioSignal2, audioFs); % Create audioplayer object
+            data.audioPlayer = data.audioPlayer1;
 
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
@@ -377,6 +413,33 @@ function FLvideo(videoFile)
         if isfield(data,'hVideo'), set(data.hVideo, 'CData', getframeCache(data.currentFrame)); end
     end
 
+    function changeMotionMeasure(~, ~, hFig);
+        data.motionMeasure=get(data.handles_motionmeasure,'value');
+        if isfield(data,'globalMotion'), 
+            if data.motionMeasure==1, globalMotion = data.globalMotion; % Plot global velocity
+            else,                     globalMotion = data.globalMotion2; % Plot global acceleration
+            end
+            set(data.handles_motionPlot,'ydata',globalMotion);  
+            set(data.handles_motionPanel,'ylim',[0 1.1*max(globalMotion)]); 
+        end
+        if isfield(data,'hVideo'), set(data.hVideo, 'CData', getframeCache(data.currentFrame)); end
+    end
+
+    function changeAudioSignal(~, ~, hFig);
+        data.audioSignalSelect =get(data.handles_audiosignal,'value');
+        if isfield(data,'globalMotion'), 
+            if data.audioSignalSelect==1, 
+                data.audioSignal = data.audioSignal1; % raw audio
+                data.audioPlayer = data.audioPlayer1;
+            else,                   
+                data.audioSignal = data.audioSignal2; % denoised audio
+                data.audioPlayer = data.audioPlayer2;
+            end
+            set(data.handles_audioPlot,'ydata',data.audioSignal(:,1));  
+            set(data.handles_audioPanel,'ylim',[-1, 1]*1.1*max(abs(data.audioSignal(:)))); 
+        end
+    end
+
     function changeLayout(layout)
         if nargin<1, layout=get(data.handles_layout,'value'); end
         if ~isfield(data,'layout'), data.layout=1; end
@@ -418,8 +481,8 @@ function FLvideo(videoFile)
         zoomIn(false);
 
         % Save the current axis limits
-        currentAudioXLim = xlim(data.handles_audioPanel);
-        currentMotionXLim = xlim(data.handles_motionPanel);
+        %currentAudioXLim = xlim(data.handles_audioPanel);
+        %currentMotionXLim = xlim(data.handles_motionPanel);
         currentAudioYLim = data.audioYLim;
         currentMotionYLim = data.motionYLim;
 
@@ -482,10 +545,10 @@ function FLvideo(videoFile)
         if isfield(data, 'handles_zoom') && isvalid(data.handles_zoom), set(data.handles_zoom, 'Enable', 'on'); end        
 
         % Restore the original axis limits
-        xlim(data.handles_audioPanel, currentAudioXLim);
-        ylim(data.handles_audioPanel, currentAudioYLim);
-        xlim(data.handles_motionPanel, currentMotionXLim);
-        ylim(data.handles_motionPanel, currentMotionYLim);
+        %xlim(data.handles_audioPanel, currentAudioXLim);
+        %ylim(data.handles_audioPanel, currentAudioYLim);
+        %xlim(data.handles_motionPanel, currentMotionXLim);
+        %ylim(data.handles_motionPanel, currentMotionYLim);
 
         % Release hold on the plots
         hold(data.handles_audioPanel, 'off');
@@ -527,16 +590,18 @@ function FLvideo(videoFile)
             return;
         end
         outputFile = fullfile(filePath, fileName);
+        if ~isempty(dir(outputFile)), 
+            if ispc, [ok,nill]=system(sprintf('del "%s"',outputFile));
+            else [ok,nill]=system(sprintf('rm -f ''%s''',outputFile));
+            end
+        end
 
         switch(regexprep(fileName,'^.*\.',''))
             case 'mp4'
-                if ismac&&~isempty(dir('/Applications/VLC.app')), 
-                    saveaudio=true; 
-                    tempfile='VidTest_temporalfile_video.mp4';
-                else 
-                    saveaudio=false; 
-                    tempfile=outputFile;
-                end
+                saveaudio=true;
+                tempfile='VidTest_temporalfile_video.mp4';
+                % saveaudio=false;
+                % tempfile=outputFile;
                 % Write video
                 writer = VideoWriter(tempfile,'MPEG-4');
                 writer.FrameRate=data.FrameRate;
@@ -548,14 +613,45 @@ function FLvideo(videoFile)
                     writeVideo(writer, frame);
                 end
                 close(writer);
-                if saveaudio
-                    % Write separate audio track and merge
-                    audiowrite('VidTest_temporalfile_audio.mp4', audioClip, data.SampleRate);
-                    [ok,msg]=system(sprintf('/Applications/VLC.app/Contents/MacOS/VLC -I dummy ''%s'' --input-slave=%s --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile))
+                % Write separate audio track and merge
+                audiowrite('VidTest_temporalfile_audio.mp4', audioClip, data.SampleRate);
+                if ispc
+                    cmd=sprintf('ffmpeg -i "%s" -i "%s" -c:v copy -c:a copy "%s"', 'VidTest_temporalfile_video.mp4', 'VidTest_temporalfile_audio.mp4', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    [ko,msg]=system('which ffmpeg');
+                    if ko~=0,
+                        cmd=sprintf('VLC -I dummy ''%s'' --input-slave=%s --sout ''#gather:std{access=file,mux=mp4,dst=%s}'' vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile)
+                        [ko,msg]=system('which ffmpeg');
+                    end
+                    if ko==0,
+                        [ko,msg]=system(cmd)
+                        disp(['Clip saved to: ', outputFile]);
+                    else 
+                        disp('Sorry, unable to find FFMPEG or VLC on your system');
+                    end
+                else
+                    args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=%s --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    cmd='ffmpeg'; args=args_ffmpeg;
+                    [ko,msg]=system('which ffmpeg');
+                    if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+                    if ko~=0 && ~isempty('/Applications/ffmpeg'), ko=0; cmd='/Applications/ffmpeg'; end
+                    if ko~=0
+                        cmd='vlc'; args=args_vlc;
+                        [ko,msg]=system('which vlc');
+                        if ko~=0 && ~isempty('/usr/local/bin/vlc'), ko=0; cmd='/usr/local/bin/vlc'; end
+                        if ko~=0 && ~isempty('/Applications/vlc'), ko=0; cmd='/Applications/vlc'; end
+                        if ko~=0 && ~isempty('/Applications/VLC.app'), ko=0; cmd='/Applications/VLC.app/Contents/MacOS/VLC'; end
+                    end                        
+                    if ko==0 % try merging using ffmpeg
+                        [ko,msg]=system(sprintf('%s %s', cmd, args));
+                        disp(['Clip saved to: ', outputFile]);
+                    else
+                        disp('Sorry, unable to find FFMPEG or VLC on your system');
+                    end
                 end
 
             case 'avi'
-                if ~ismac&&~isempty(which('vision.VideoFileWriter')) % saves video and audio to avi using Vision Toolbox
+                if ~isempty(which('vision.VideoFileWriter')) % saves video and audio to avi using Vision Toolbox
                     % Initialize vision.VideoFileWriter
                     writer = vision.VideoFileWriter(outputFile, ...
                         'FileFormat', 'AVI', ...
@@ -578,6 +674,7 @@ function FLvideo(videoFile)
                         step(writer, frame, audioFrame); % Write the video and audio frame
                     end
                     release(writer);
+                    disp(['Clip saved to: ', outputFile]);
                 else % saves only video
                     writer = VideoWriter(outputFile,'MPEG-4');
                     writer.FrameRate=data.FrameRate;
@@ -589,14 +686,15 @@ function FLvideo(videoFile)
                         writeVideo(writer, frame);
                     end
                     close(writer);
+                    disp(['Clip (without audio) saved to: ', outputFile]);
                 end
 
             case 'mat'
                 video = struct('data',{data.frameCache(startFrame:endFrame)},'fs',data.FrameRate);
                 audio = struct('data',audioClip,'fs',data.SampleRate);
                 save(outputFile, 'video','audio');
+                disp(['Clip saved to: ', outputFile]);
         end
-        disp(['Clip saved to: ', outputFile]);
     end
 
     function playSelection(hFig)
@@ -652,14 +750,49 @@ function FLvideo(videoFile)
 
     end
 
+    function filteredAudio = filterMRINoise(audioSignal, audioFs, targetFreq)
+        % Comb filter: y(t) = x(t) - x(t-delay)
+        % optimized delay time to search between f0/2 and 2*f0
+        if nargin<3, targetFreq=55; end % target frequency (Hz) (range tested 22.5 to 110)
+        optimPeriod=nan;
+        optimValue=inf;
+        sample=(1:size(audioSignal,1))';
+        N=audioFs./targetFreq;
+        for nrepeat=1:4
+            if nrepeat==1, tryperiods=linspace(N/2,2*N,64);
+            elseif nrepeat==2, tryperiods=linspace(optimPeriod*(1-1.5/63),optimPeriod*(1+1.5/63),64); 
+            elseif nrepeat==3, tryperiods=linspace(optimPeriod*(1-2*1.5/63/63),optimPeriod*(1+2*1.5/63/63),64);
+            else tryperiods=optimPeriod;
+            end
+            for PeriodInSamples=tryperiods,
+                idx=PeriodInSamples;
+                idx1=ceil(idx);
+                idx2=idx1-idx;
+                y=audioSignal;
+                y(idx1+1:end)=y(idx1+1:end)-((1-idx2)*y(1:end-idx1)+idx2*y(2:end-idx1+1)); 
+                Value=mean(mean(abs(y).^2,1));
+                if Value<optimValue, optimPeriod=PeriodInSamples; optimValue=Value; end
+            end
+        end
+        filteredAudio=y;
+        fprintf('Noise supression: noise fundamental frequency %sHz\n',mat2str(audioFs/optimPeriod,6));
+    end
+
     function frame = getframeCache(currentFrameIndex) % mixes video frame image with motion highlight
         frame = data.frameCache{currentFrameIndex};
         if data.motionHighlight>1, 
             colors=[0 0 0; 1 0 0; 1 1 0];
             color=colors(data.motionHighlight,:);
-            if currentFrameIndex==1, dframe=sqrt(data.frameMotion{currentFrameIndex});
-            elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotion{currentFrameIndex-1});
-            else dframe=sqrt((data.frameMotion{currentFrameIndex}+data.frameMotion{currentFrameIndex-1})/2);
+            if data.motionMeasure==1
+                if currentFrameIndex==1, dframe=sqrt(data.frameMotion{currentFrameIndex});
+                elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotion{currentFrameIndex-1});
+                else dframe=sqrt((data.frameMotion{currentFrameIndex}+data.frameMotion{currentFrameIndex-1})/2);
+                end
+            else
+                if currentFrameIndex==1, dframe=sqrt(data.frameMotion2{currentFrameIndex});
+                elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotion2{currentFrameIndex-1});
+                else dframe=sqrt((data.frameMotion2{currentFrameIndex}+data.frameMotion2{currentFrameIndex-1})/2);
+                end
             end
             frame=uint8(cat(3, round((1-dframe).*double(frame(:,:,1))+255*dframe*color(1)), round((1-dframe).*double(frame(:,:,2))+255*dframe*color(2)), round((1-dframe).*double(frame(:,:,3))+255*dframe*color(3)) ));
         end
