@@ -616,21 +616,23 @@ function FLvideo(videoFile)
                 % Write separate audio track and merge
                 audiowrite('VidTest_temporalfile_audio.mp4', audioClip, data.SampleRate);
                 if ispc
-                    cmd=sprintf('ffmpeg -i "%s" -i "%s" -c:v copy -c:a copy "%s"', 'VidTest_temporalfile_video.mp4', 'VidTest_temporalfile_audio.mp4', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
-                    [ko,msg]=system('which ffmpeg');
-                    if ko~=0,
-                        cmd=sprintf('VLC -I dummy ''%s'' --input-slave=%s --sout ''#gather:std{access=file,mux=mp4,dst=%s}'' vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile)
-                        [ko,msg]=system('which ffmpeg');
-                    end
-                    if ko==0,
-                        [ko,msg]=system(cmd)
+                    args_ffmpeg=sprintf('-i "s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    cmd='ffmpeg'; args=args_ffmpeg;
+                    [ko,msg]=system('where ffmpeg');
+                    if ko~=0
+                        cmd='vlc'; args=args_vlc;
+                        [ko,msg]=system('where vlc');
+                    end                        
+                    if ko==0 % try merging using ffmpeg or VLC
+                        [ko,msg]=system(sprintf('%s %s', cmd, args));
                         disp(['Clip saved to: ', outputFile]);
-                    else 
+                    else
                         disp('Sorry, unable to find FFMPEG or VLC on your system');
                     end
                 else
                     args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
-                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=%s --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('which ffmpeg');
                     if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
