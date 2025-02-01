@@ -626,9 +626,13 @@ function FLvideo(videoFile)
                     end                        
                     if ko==0 % try merging using ffmpeg or VLC
                         [ko,msg]=system(sprintf('%s %s', cmd, args))
+                        if ko~=0, 
+                            disp(sprintf('%s %s', cmd, args));
+                            disp(msg); 
+                        end
                         disp(['Clip saved to: ', outputFile]);
                     else
-                        disp('Sorry, unable to find FFMPEG or VLC on your system');
+                        disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
                     end
                 else
                     args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
@@ -645,10 +649,16 @@ function FLvideo(videoFile)
                         if ko~=0 && ~isempty('/Applications/VLC.app'), ko=0; cmd='/Applications/VLC.app/Contents/MacOS/VLC'; end
                     end                        
                     if ko==0 % try merging using ffmpeg
-                        [ko,msg]=system(sprintf('%s %s', cmd, args))
+                        [ko,msg]=system(sprintf('%s %s', cmd, args));
+                        if ko~=0, 
+                            disp(sprintf('%s %s', cmd, args));
+                            disp(msg); 
+                        end
                         disp(['Clip saved to: ', outputFile]);
                     else
-                        disp('Sorry, unable to find FFMPEG or VLC on your system');
+                        if ismac, disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the Applications folder');
+                        else disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
+                        end
                     end
                 end
 
