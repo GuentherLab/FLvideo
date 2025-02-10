@@ -618,6 +618,7 @@ function FLvideo(videoFile)
                 % Write separate audio track and merge
                 SampleRate=data.SampleRate;
                 if ~ismember(SampleRate,[44100,48000])
+                    disp(['Clip audio resampled from ', num2str(SampleRate), 'Hz to 48000Hz']);
                     audioClip=interpft(audioClip,round(length(audioClip)*48000/SampleRate));
                     SampleRate=48000;
                 end
