@@ -84,6 +84,7 @@ function FLvideo(videoFile)
                     otherwise % reads video file
                         % Extract audio signal
                         [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+                        audioSignal=audioSignal(:,1); % mono audio track
                         % Create a VideoReader object
                         v = VideoReader(videoFile);
 
@@ -91,6 +92,7 @@ function FLvideo(videoFile)
                         disp(['Duration: ', num2str(v.Duration), ' seconds (',num2str(v.numFrames), ' frames)']);
                         disp(['Video Frame Rate: ', num2str(v.FrameRate), ' fps']);
                         disp(['Video Resolution: ', num2str(v.Width), 'x', num2str(v.Height)]);
+                        disp(['Audio Sample Rate: ', num2str(audioFs)]);
                         %disp(['Audio Format: ', v.AudioFormat]); % Audio information, if available
 
                         % Get total frames of video
@@ -584,7 +586,7 @@ function FLvideo(videoFile)
         audioClip = data.audioSignal(startSample:endSample, :); % Extract audio segment
 
         % Prompt user for output file name
-        [fileName, filePath] = uiputfile({'*.mat', 'Matlb Video File (*.mat)'; '*.mp4', 'MP4 Video File (*.mp4)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As');
+        [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As');
         if fileName == 0
             disp('Saving cancelled.');
             return;
@@ -614,10 +616,10 @@ function FLvideo(videoFile)
                 end
                 close(writer);
                 % Write separate audio track and merge
-                audiowrite('VidTest_temporalfile_audio.mp4', audioClip, data.SampleRate);
                 if ispc
-                    args_ffmpeg=sprintf('-i "s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
-                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    audiowrite('VidTest_temporalfile_audio.mp3', audioClip, data.SampleRate);
+                    args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp3'), outputFile);
+                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp3'), outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('where ffmpeg');
                     if ko~=0
@@ -625,12 +627,22 @@ function FLvideo(videoFile)
                         [ko,msg]=system('where vlc');
                     end                        
                     if ko==0 % try merging using ffmpeg or VLC
-                        [ko,msg]=system(sprintf('%s %s', cmd, args));
+                        [ko,msg]=system(sprintf('%s %s', cmd, args))
+                        if ko~=0, 
+                            disp(sprintf('%s %s', cmd, args));
+                            disp(msg); 
+                        end
                         disp(['Clip saved to: ', outputFile]);
                     else
-                        disp('Sorry, unable to find FFMPEG or VLC on your system');
+                        disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
                     end
                 else
+                    SampleRate=data.SampleRate;
+                    if ~ismember(SampleRate,[44100,48000])
+                        audioClip=interpft(audioClip,round(length(audioClip)*48000/SampleRate));
+                        SampleRate=48000;
+                    end
+                    audiowrite('VidTest_temporalfile_audio.mp4', audioClip, SampleRate);
                     args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
                     args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
@@ -646,9 +658,15 @@ function FLvideo(videoFile)
                     end                        
                     if ko==0 % try merging using ffmpeg
                         [ko,msg]=system(sprintf('%s %s', cmd, args));
+                        if ko~=0, 
+                            disp(sprintf('%s %s', cmd, args));
+                            disp(msg); 
+                        end
                         disp(['Clip saved to: ', outputFile]);
                     else
-                        disp('Sorry, unable to find FFMPEG or VLC on your system');
+                        if ismac, disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the Applications folder');
+                        else disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
+                        end
                     end
                 end
 
@@ -734,9 +752,7 @@ function FLvideo(videoFile)
             pause(data.audioPlayer);
             data.isPlaying = false;
         end
-
     end
-
 
     function loadNewVideo(hFig)
         % Prompt user for a new video file
