@@ -616,10 +616,15 @@ function FLvideo(videoFile)
                 end
                 close(writer);
                 % Write separate audio track and merge
+                SampleRate=data.SampleRate;
+                if ~ismember(SampleRate,[44100,48000])
+                    audioClip=interpft(audioClip,round(length(audioClip)*48000/SampleRate));
+                    SampleRate=48000;
+                end
+                audiowrite('VidTest_temporalfile_audio.mp4', audioClip, SampleRate);
                 if ispc
-                    audiowrite('VidTest_temporalfile_audio.mp3', audioClip, data.SampleRate);
-                    args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp3'), outputFile);
-                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp3'), outputFile);
+                    args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
+                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('where ffmpeg');
                     if ko~=0
@@ -637,12 +642,6 @@ function FLvideo(videoFile)
                         disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
                     end
                 else
-                    SampleRate=data.SampleRate;
-                    if ~ismember(SampleRate,[44100,48000])
-                        audioClip=interpft(audioClip,round(length(audioClip)*48000/SampleRate));
-                        SampleRate=48000;
-                    end
-                    audiowrite('VidTest_temporalfile_audio.mp4', audioClip, SampleRate);
                     args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
                     args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'VidTest_temporalfile_video.mp4'),fullfile(pwd,'/VidTest_temporalfile_audio.mp4'), outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
