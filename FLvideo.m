@@ -278,6 +278,7 @@ function FLvideo(videoFile)
             data.audioPlayer1 = audioplayer(audioSignal, audioFs); % Create audioplayer object
             data.audioPlayer2 = audioplayer(audioSignal2, audioFs); % Create audioplayer object
             data.audioPlayer = data.audioPlayer1;
+            data.videoFile = videoFile;
 
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
@@ -480,8 +481,6 @@ function FLvideo(videoFile)
     end
 
     function selectPoints(hFig)
-        zoomIn(false);
-
         % Save the current axis limits
         %currentAudioXLim = xlim(data.handles_audioPanel);
         %currentMotionXLim = xlim(data.handles_motionPanel);
@@ -586,7 +585,10 @@ function FLvideo(videoFile)
         audioClip = data.audioSignal(startSample:endSample, :); % Extract audio segment
 
         % Prompt user for output file name
-        [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As');
+        if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','.mp4');
+        else                          suggestedfileName=regexprep(data.videoFile,'(_denoised)?\.[^\.]*$','_denoised.mp4');
+        end
+        [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As',suggestedfileName);
         if fileName == 0
             disp('Saving cancelled.');
             return;
@@ -600,10 +602,7 @@ function FLvideo(videoFile)
 
         switch(regexprep(fileName,'^.*\.',''))
             case 'mp4'
-                saveaudio=true;
                 tempfile='VidTest_temporalfile_video.mp4';
-                % saveaudio=false;
-                % tempfile=outputFile;
                 % Write video
                 writer = VideoWriter(tempfile,'MPEG-4');
                 writer.FrameRate=data.FrameRate;
@@ -617,10 +616,12 @@ function FLvideo(videoFile)
                 close(writer);
                 % Write separate audio track and merge
                 SampleRate=data.SampleRate;
-                if ~ismember(SampleRate,[44100,48000])
-                    disp(['Clip audio resampled from ', num2str(SampleRate), 'Hz to 48000Hz']);
-                    audioClip=interpft(audioClip,round(length(audioClip)*48000/SampleRate));
-                    SampleRate=48000;
+                if ~ismember(data.SampleRate,[44100,48000]) % resample audio to 44100 or 48000 for compatibility across platforms
+                    if ismember(data.SampleRate,[11025, 22050]), SampleRate=44100;
+                    else SampleRate=48000;
+                    end
+                    disp(['Clip audio resampled from ', num2str(data.SampleRate), 'Hz to ',num2str(SampleRate),'Hz']);
+                    audioClip=interpft(audioClip,round(length(audioClip)*SampleRate/data.SampleRate));
                 end
                 audiowrite('VidTest_temporalfile_audio.mp4', audioClip, SampleRate);
                 if ispc
