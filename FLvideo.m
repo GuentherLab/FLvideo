@@ -367,6 +367,7 @@ function FLvideo(videoFile)
             frame = getframeCache(currentFrameIndex);
             set(data.hVideo, 'CData', frame);
             timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
+            fprintf('t = %.3fs\n',mean(timeAtCurrentFrame));
             set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
             set(data.motionFrameLine, 'XData', timeAtCurrentFrame, ...
                 'YData', data.motionYLim([1 2 2 1]));
@@ -492,14 +493,16 @@ function FLvideo(videoFile)
         hold(data.handles_motionPanel, 'on');
 
         % Display instructions
-        disp('Select a point on the audio plot');
+        fprintf('Select a point on the audio plot: ');
         [audioX, ~] = ginput(1); % Select first point on the audio plot
+        fprintf('t = %.3fs\n',mean(audioX));
 
         % Add a temporary vertical line for the selected audio point
         tempAudioLine = line(data.handles_audioPanel, [audioX, audioX], currentAudioYLim, ...
             'Color', 'blue', 'LineStyle', '--');
-        disp('Select a point on the motion plot');
+        fprintf('Select a point on the motion plot: ');
         [motionX, ~] = ginput(1); % Select second point on the motion plot
+        fprintf('t = %.3fs\n',mean(motionX));
 
         % Add a temporary vertical line for the selected motion point
         tempMotionLine = line(data.handles_motionPanel, [motionX, motionX], currentMotionYLim, ...
@@ -588,7 +591,7 @@ function FLvideo(videoFile)
         if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','.mp4');
         else                          suggestedfileName=regexprep(data.videoFile,'(_denoised)?\.[^\.]*$','_denoised.mp4');
         end
-        [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As',suggestedfileName);
+        [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As', suggestedfileName);
         if fileName == 0
             disp('Saving cancelled.');
             return;
