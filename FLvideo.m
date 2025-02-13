@@ -367,7 +367,7 @@ function FLvideo(videoFile)
             frame = getframeCache(currentFrameIndex);
             set(data.hVideo, 'CData', frame);
             timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
-            fprintf('t = %.3fs\n',mean(timeAtCurrentFrame));
+            fprintf('t = %.3fs\n',thisTime(1));
             set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
             set(data.motionFrameLine, 'XData', timeAtCurrentFrame, ...
                 'YData', data.motionYLim([1 2 2 1]));
