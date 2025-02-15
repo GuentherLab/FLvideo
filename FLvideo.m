@@ -39,8 +39,9 @@ function FLvideo(videoFile)
                     set(data.hVideo, 'CData', frame); % Update video frame
 
                     timeAtCurrentFrame = (currentFrame+[-1 -1 0 0]) / data.FrameRate; % note: displays time at midpoint of frame
-                    set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
-                    set(data.motionFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
+                    set(data.handles_audioFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
+                    set(data.handles_motionFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
+                    set(data.handles_motionFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
                     countidle=0;
                     drawnow;
                 else pause(0.001);
@@ -59,14 +60,14 @@ function FLvideo(videoFile)
         isready='off';
         layout=1;
         motionHighlight=1;
-        motionMeasure=1;
+        plotMeasure=1;
         % Create the main figure for video, audio, and controls
         if nargin<2, 
             hFig = figure('units','norm','Position', [.25, .1, .5, .8], 'MenuBar', 'none', 'NumberTitle', 'off', 'Name', 'Video Player','color','w');
         else
             try, layout=get(data.handles_layout,'value'); end
             try, motionHighlight=get(data.handles_motionhighlight,'value'); end
-            try, motionMeasure=get(data.handles_motionmeasure,'value'); end
+            try, plotMeasure=get(data.handles_plotmeasure,'value'); end
         end
         data=[];
         if ~isempty(videoFile), 
@@ -159,9 +160,9 @@ function FLvideo(videoFile)
         data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'Value', 1, 'string', {'raw audio','MRI denoised audio'}, 'Position', [600, 55, 130, 20], ...
             'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Motion Intensity', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_motionmeasure=uicontrol('Style', 'popupmenu', 'string', {'velocity of movements', 'acceleration of movements'}, 'Value', motionMeasure, 'Position', [600, 35, 130, 20], ...
-            'Callback', @(src, event) changeMotionMeasure(src, event, hFig), 'Parent', data.handles_buttonPanel);
+        uicontrol('Style', 'text', 'String', 'Plot', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_plotmeasure=uicontrol('Style', 'popupmenu', 'string', {'velocity of movements', 'acceleration of movements', 'audio spectrogram'}, 'Value', plotMeasure, 'Position', [600, 35, 130, 20], ...
+            'Callback', @(src, event) changePlotMeasure(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 15, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
         data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [600, 15, 130, 20], ...
@@ -220,7 +221,8 @@ function FLvideo(videoFile)
             data.handles_audioPanel = axes('Position', [0.1, 0.4, 0.8, 0.1], 'Parent', hFig); % Move audio panel upward
             data.handles_audioPlot = plot((0:length(audioSignal)-1)/audioFs, audioSignal(:,1), 'b', 'Parent', data.handles_audioPanel); % Plot full audio signal
             hold(data.handles_audioPanel, 'on');
-            frameLine = patch(data.handles_audioPanel, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
+            data.handles_audioFrameLine = patch(data.handles_audioPanel, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
+            data.handles_audioShading = patch([0 0 0 0],[0 0 0 0],'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');        
             xlim(data.handles_audioPanel, [0 totalDuration]); % Set x-axis limits based on audio duration
             audioYLim = [-1, 1]*1.1*max(max(abs(audioSignal2(:))),max(abs(audioSignal(:)))); % Get the correct y-limits for the audio signal
             ylim(data.handles_audioPanel, [-1, 1]*1.1*max(max(abs(audioSignal)))); % Apply y-limits for the audio plot
@@ -229,23 +231,43 @@ function FLvideo(videoFile)
             title(data.handles_audioPanel, 'Audio Signal with Current Frame');
             hold(data.handles_audioPanel, 'off');
             set(data.handles_audioPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1], 'xticklabel',[]);
-            set([data.handles_audioPanel; data.handles_audioPlot(:)],'buttondownfcn',@(varargin)thisFrame);
+            set([data.handles_audioPanel; data.handles_audioPlot(:); data.handles_audioShading(:)],'buttondownfcn',@(varargin)thisFrame);
 
-            % Create a dedicated axes for the global motion
-            data.handles_motionPanel = axes('Position', [0.1, 0.25, 0.8, 0.1], 'Parent', hFig); % Move motion panel upward
-            data.handles_motionPlot = plot(data.handles_motionPanel, (1:numFrames-1)/FrameRate, globalMotion, 'g'); % Plot global motion
+            % Create a dedicated axes for the global motion, global acceleration, or spectrogram
+            data.handles_motionPanel = axes('Position', [0.1, 0.25, 0.8, 0.1], 'Parent', hFig); 
+            data.handles_motionPlot = plot(data.handles_motionPanel, (1:numFrames-1)/FrameRate, globalMotion, 'g');
+            % if plotMeasure==1, data.handles_motionPlot = plot(data.handles_motionPanel, (1:numFrames-1)/FrameRate, globalMotion, 'g'); % Plot global motion
+            % else data.handles_motionPlot = plot(data.handles_motionPanel, (1:numFrames-1)/FrameRate, globalMotion2, 'g'); % Plot global motion
+            % end
             hold(data.handles_motionPanel, 'on');
-            motionFrameLine = patch(data.handles_motionPanel, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
+            data.handles_motionFrameLine = patch(data.handles_motionPanel, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
+            data.handles_motionShading = patch([0 0 0 0],[0 0 0 0],'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+            hold(data.handles_motionPanel, 'off');
             xlim(data.handles_motionPanel, [0 totalDuration]); % Set x-axis limits based on video duration
             motionYLim = [0 1.1*max(globalMotion)]; % Calculate y-limits for the global motion velocity
             motionYLim2 = [0 1.1*max(globalMotion2)]; % Calculate y-limits for the global motion acceleration
-            ylim(data.handles_motionPanel, motionYLim); % Apply y-limits for the motion plot
+            %if plotMeasure==1, ylim(data.handles_motionPanel, motionYLim); % Apply y-limits for the motion plot
+            %else ylim(data.handles_motionPanel, motionYLim2);
+            %end
             xlabel(data.handles_motionPanel, 'Time (s)');
             ylabel(data.handles_motionPanel, 'Motion Intensity');
             title(data.handles_motionPanel, 'Global Motion Across Frames');
-            hold(data.handles_motionPanel, 'off');
             set(data.handles_motionPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
-            set([data.handles_motionPanel; data.handles_motionPlot(:)],'buttondownfcn',@(varargin)thisFrame);
+            set([data.handles_motionPanel; data.handles_motionPlot(:); data.handles_motionShading(:)],'buttondownfcn',@(varargin)thisFrame);
+
+            data.handles_motionPanel2 = axes('Position', [0.1, 0.25, 0.8, 0.1], 'Parent', hFig); 
+            data.handles_motionPlot2 = image(data.handles_motionPanel2, []);
+            hold(data.handles_motionPanel2, 'on');
+            data.handles_motionFrameLine2 = patch(data.handles_motionPanel2, [0 0 0 0], [0 0 0 0], 'r', 'edgecolor', 'none', 'facealpha', .5); % Red line for current frame
+            data.handles_motionShading2 = patch([0 0 0 0],[0 0 0 0],'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+            hold(data.handles_motionPanel2, 'off');
+            xlim(data.handles_motionPanel2, [0 totalDuration]); % Set x-axis limits based on video duration
+            motionYLim3 = [0 8000];
+            xlabel(data.handles_motionPanel2, 'Time (s)');
+            ylabel(data.handles_motionPanel2, 'Frequency (Hz)'); % note: change later when adding more plots
+            title(data.handles_motionPanel2, 'Audio Spectrogram');
+            set(data.handles_motionPanel2, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
+            set([data.handles_motionPanel2; data.handles_motionPlot2(:); data.handles_motionShading2(:)],'buttondownfcn',@(varargin)thisFrame);
 
             % Store information in shared "data" variable
             data.isPlaying = false;
@@ -265,14 +287,13 @@ function FLvideo(videoFile)
             data.frameMotion2=frameMotion2;
             data.globalMotion=globalMotion;
             data.globalMotion2=globalMotion2;
-            data.frameLine = frameLine;
-            data.motionFrameLine = motionFrameLine;
+            data.spectrogram = [];
             data.motionHighlight = motionHighlight;
-            data.motionMeasure = motionMeasure;
+            data.plotMeasure = plotMeasure;
             data.audioSignalSelect = 1;
             data.layout = layout;
             data.audioYLim = audioYLim;
-            data.motionYLim = max(motionYLim, motionYLim2);
+            data.motionYLim = max([motionYLim; motionYLim2; motionYLim3]);
             data.zoomin = false;
             data.playbackSpeed = 1; % Default playback speed
             data.audioPlayer1 = audioplayer(audioSignal, audioFs); % Create audioplayer object
@@ -282,11 +303,13 @@ function FLvideo(videoFile)
 
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
+            changePlotMeasure();
             if layout~=1, changeLayout(); end
         else
             data.handles_videoPanel=[];
             data.handles_audioPanel=[];
             data.handles_motionPanel=[];
+            data.handles_motionPanel2=[];
         end
         data.isPlaying=false;
         varargout={data};
@@ -326,9 +349,9 @@ function FLvideo(videoFile)
                 frame = getframeCache(currentFrameIndex);
                 set(data.hVideo, 'CData', frame);
                 timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
-                set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
-                set(data.motionFrameLine, 'XData', timeAtCurrentFrame, ...
-                    'YData', data.motionYLim([1 2 2 1]));
+                set(data.handles_audioFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
+                set(data.handles_motionFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
+                set(data.handles_motionFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
 
                 % Play the audio for the current frame
                 startSample = max(1,min(length(data.audioSignal)-1, 1+round((data.currentFrame-1)/data.FrameRate*data.SampleRate) ));
@@ -350,9 +373,9 @@ function FLvideo(videoFile)
                 frame = getframeCache(currentFrameIndex);
                 set(data.hVideo, 'CData', frame);
                 timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
-                set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
-                set(data.motionFrameLine, 'XData', timeAtCurrentFrame, ...
-                    'YData', data.motionYLim([1 2 2 1]));
+                set(data.handles_audioFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
+                set(data.handles_motionFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
+                set(data.handles_motionFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
                 drawnow;
             end
         end
@@ -368,9 +391,9 @@ function FLvideo(videoFile)
             set(data.hVideo, 'CData', frame);
             timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
             fprintf('t = %.3fs\n',thisTime(1));
-            set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
-            set(data.motionFrameLine, 'XData', timeAtCurrentFrame, ...
-                'YData', data.motionYLim([1 2 2 1]));
+            set(data.handles_audioFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
+            set(data.handles_motionFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
+            set(data.handles_motionFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
             drawnow;
         end
     end
@@ -383,9 +406,9 @@ function FLvideo(videoFile)
             frame = getframeCache(currentFrameIndex);
             set(data.hVideo, 'CData', frame);
             timeAtCurrentFrame = (currentFrameIndex+[-1 -1 0 0]) / data.FrameRate;
-            set(data.frameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
-            set(data.motionFrameLine, 'XData', timeAtCurrentFrame, ...
-                'YData', data.motionYLim([1 2 2 1]));
+            set(data.handles_audioFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
+            set(data.handles_motionFrameLine, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
+            set(data.handles_motionFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.motionYLim([1 2 2 1]));
             zoomIn(false);
             drawnow;
         end
@@ -404,11 +427,11 @@ function FLvideo(videoFile)
         end
         switch(data.zoomin)
             case 1, % zoom in
-                startTime = min(data.audioLine.XData(1), data.motionLine.XData(1));
-                endTime = max(data.audioLine.XData(1), data.motionLine.XData(1));
-                xlim([data.handles_audioPanel,data.handles_motionPanel], [max(0,startTime-.1*(endTime-startTime)) min(data.totalDuration,endTime+.1*(endTime-startTime))]); 
+                startTime = min(data.handles_audioLine1.XData(1), data.handles_audioLine2.XData(1));
+                endTime = max(data.handles_audioLine1.XData(1), data.handles_audioLine2.XData(1));
+                xlim([data.handles_audioPanel,data.handles_motionPanel,data.handles_motionPanel2], [max(0,startTime-.1*(endTime-startTime)) min(data.totalDuration,endTime+.1*(endTime-startTime))]); 
             case 0, % zoom out
-                xlim([data.handles_audioPanel, data.handles_motionPanel], [0 data.totalDuration]); 
+                xlim([data.handles_audioPanel, data.handles_motionPanel, data.handles_motionPanel2], [0 data.totalDuration]); 
         end
     end
 
@@ -417,14 +440,40 @@ function FLvideo(videoFile)
         if isfield(data,'hVideo'), set(data.hVideo, 'CData', getframeCache(data.currentFrame)); end
     end
 
-    function changeMotionMeasure(~, ~, hFig);
-        data.motionMeasure=get(data.handles_motionmeasure,'value');
+    function changePlotMeasure(~, ~, hFig);
+        data.plotMeasure=get(data.handles_plotmeasure,'value');
         if isfield(data,'globalMotion'), 
-            if data.motionMeasure==1, globalMotion = data.globalMotion; % Plot global velocity
-            else,                     globalMotion = data.globalMotion2; % Plot global acceleration
+            if ismember(data.plotMeasure,[1,2]) % plots
+                switch(data.plotMeasure),
+                    case 1, plotdata = data.globalMotion; % Plot global velocity
+                    case 2, plotdata = data.globalMotion2; % Plot global acceleration
+                end
+                set(data.handles_motionPlot,'ydata',plotdata,'visible','on');
+                set(data.handles_motionPanel,'ylim',[0 1.1*max(plotdata)],'visible','on');
+                set(data.handles_motionShading,'visible','on');
+                set([data.handles_motionPanel2,data.handles_motionPlot2,data.handles_motionShading2],'visible','off');
+            else % images
+                switch(data.plotMeasure)
+                    case 3, % spectrogram
+                        if ~isfield(data,'spectrogram')||isempty(data.spectrogram), 
+                            hwindowsize=0.010;
+                            [data.spectrogram.P1,data.spectrogram.t,data.spectrogram.f]=flvoice_spectrogram(data.audioSignal1,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate),2048);
+                            [data.spectrogram.P2,data.spectrogram.t,data.spectrogram.f]=flvoice_spectrogram(data.audioSignal2,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate),2048);
+                        end
+                        mask=data.spectrogram.f<=8000;
+                        plotdataX=data.spectrogram.t;
+                        plotdataY=data.spectrogram.f(mask);
+                        if data.audioSignalSelect==1, plotdataC=data.spectrogram.P1(mask,:);
+                        else plotdataC=data.spectrogram.P2(mask,:);
+                        end
+                end
+                c1=min(mean(plotdataC,1));
+                c2=max(plotdataC(:));
+                set(data.handles_motionPlot2,'cdata',repmat(1-max(0,plotdataC-c1)/max(eps,c2-c1),[1,1,3]),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
+                set(data.handles_motionPanel2,'ydir','normal','ylim',[min(plotdataY) max(plotdataY)],'visible','on');
+                set(data.handles_motionShading2,'visible','on');
+                set([data.handles_motionPanel,data.handles_motionPlot,data.handles_motionShading],'visible','off');
             end
-            set(data.handles_motionPlot,'ydata',globalMotion);  
-            set(data.handles_motionPanel,'ylim',[0 1.1*max(globalMotion)]); 
         end
         if isfield(data,'hVideo'), set(data.hVideo, 'CData', getframeCache(data.currentFrame)); end
     end
@@ -441,6 +490,7 @@ function FLvideo(videoFile)
             end
             set(data.handles_audioPlot,'ydata',data.audioSignal(:,1));  
             set(data.handles_audioPanel,'ylim',[-1, 1]*1.1*max(abs(data.audioSignal(:)))); 
+            changePlotMeasure();
         end
     end
 
@@ -458,6 +508,7 @@ function FLvideo(videoFile)
                 set(data.handles_videoPanel,'Position', [0.0, 0.55, 1, 0.4]);
                 set(data.handles_audioPanel,'Position', [0.1, 0.4, 0.8, 0.1]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.25, 0.8, 0.1]);
+                set(data.handles_motionPanel2, 'Position', [0.1, 0.25, 0.8, 0.1]);
                 drawnow;
             case 2, % maximized (horizontal layout)
                 set(data.handles_hFig,'Position',[0.01, 0, .98, .975]);
@@ -465,6 +516,7 @@ function FLvideo(videoFile)
                 set(data.handles_videoPanel,'Position', [0.0, 0.0, 0.55, 1]);
                 set(data.handles_audioPanel,'Position', [0.575, 0.65, 0.4, 0.25]);
                 set(data.handles_motionPanel, 'Position', [0.575, 0.275, 0.4, 0.25]);
+                set(data.handles_motionPanel2, 'Position', [0.575, 0.275, 0.4, 0.25]);
                 drawnow;
             case 3, % maximized (vertical layout)
                 set(data.handles_hFig,'Position',[.01, 0, .98, .975]);
@@ -472,6 +524,7 @@ function FLvideo(videoFile)
                 set(data.handles_videoPanel,'Position', [0.0, 0.4, 1, 0.6]);
                 set(data.handles_audioPanel,'Position', [0.1, 0.275, 0.8, 0.075]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.175, 0.8, 0.075]);
+                set(data.handles_motionPanel2, 'Position', [0.1, 0.175, 0.8, 0.075]);
                 drawnow;
                 % set(data.handles_videoPanel,'Position', [0.0, 0.15, 0.45, 0.85]);
                 % set(data.handles_audioPanel,'Position', [0.50, 0.325, 0.20, 0.5]);
@@ -490,7 +543,8 @@ function FLvideo(videoFile)
 
         % Hold the current plots to preserve existing data
         hold(data.handles_audioPanel, 'on');
-        hold(data.handles_motionPanel, 'on');
+        if isfield(data,'handles_audioLine1')&&isvalid(data.handles_audioLine1), delete(data.handles_audioLine1); end
+        if isfield(data,'handles_audioLine2')&&isvalid(data.handles_audioLine2), delete(data.handles_audioLine2); end
 
         % Display instructions
         fprintf('Select a point on the audio plot: ');
@@ -498,65 +552,33 @@ function FLvideo(videoFile)
         fprintf('t = %.3fs\n',mean(audioX));
 
         % Add a temporary vertical line for the selected audio point
-        tempAudioLine = line(data.handles_audioPanel, [audioX, audioX], currentAudioYLim, ...
+        data.handles_audioLine1 = line(data.handles_audioPanel, [audioX, audioX], currentAudioYLim, ...
             'Color', 'blue', 'LineStyle', '--');
         fprintf('Select a point on the motion plot: ');
         [motionX, ~] = ginput(1); % Select second point on the motion plot
         fprintf('t = %.3fs\n',mean(motionX));
 
         % Add a temporary vertical line for the selected motion point
-        tempMotionLine = line(data.handles_motionPanel, [motionX, motionX], currentMotionYLim, ...
+        data.handles_audioLine2 = line(data.handles_audioPanel, [motionX, motionX], currentAudioYLim, ...
             'Color', 'blue', 'LineStyle', '--');
 
         % Determine the selected range
         startTime = min(audioX, motionX);
         endTime = max(audioX, motionX);
 
+
         % Add shading to indicate the selected range
-        tempAudioShading = fill(data.handles_audioPanel, ...
-            [startTime, endTime, endTime, startTime], ...
-            [currentAudioYLim(1), currentAudioYLim(1), currentAudioYLim(2), currentAudioYLim(2)], ...
-            'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
-        tempMotionShading = fill(data.handles_motionPanel, ...
-            [startTime, endTime, endTime, startTime], ...
-            [currentMotionYLim(1), currentMotionYLim(1), currentMotionYLim(2), currentMotionYLim(2)], ...
-            'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
-        set([tempAudioShading, tempMotionShading],'buttondownfcn',@(varargin)thisFrame);
-
-        % Remove previous lines and shading only after new points are selected
-        if isfield(data, 'audioLine') && isvalid(data.audioLine)
-            delete(data.audioLine); % Remove previous audio line
-        end
-        if isfield(data, 'motionLine') && isvalid(data.motionLine)
-            delete(data.motionLine); % Remove previous motion line
-        end
-        if isfield(data, 'audioShading') && isvalid(data.audioShading)
-            delete(data.audioShading); % Remove previous audio shading
-        end
-        if isfield(data, 'motionShading') && isvalid(data.motionShading)
-            delete(data.motionShading); % Remove previous motion shading
-        end
-
-        % Save the new lines and shading to the data structure
-        data.audioLine = tempAudioLine;
-        data.motionLine = tempMotionLine;
-        data.audioShading = tempAudioShading;
-        data.motionShading = tempMotionShading;
+        set(data.handles_audioShading, 'xdata', [startTime, endTime, endTime, startTime], 'ydata', [currentAudioYLim(1), currentAudioYLim(1), currentAudioYLim(2), currentAudioYLim(2)]); 
+        set(data.handles_motionShading, 'xdata', [startTime, endTime, endTime, startTime], 'ydata', [currentMotionYLim(1), currentMotionYLim(1), currentMotionYLim(2), currentMotionYLim(2)]); 
+        set(data.handles_motionShading2, 'xdata', [startTime, endTime, endTime, startTime], 'ydata', [currentMotionYLim(1), currentMotionYLim(1), currentMotionYLim(2), currentMotionYLim(2)]); 
 
         % enable selection-related buttons
         if isfield(data, 'handles_playSelectionButton') && isvalid(data.handles_playSelectionButton), set(data.handles_playSelectionButton, 'Enable', 'on'); end
         if isfield(data, 'handles_saveclipButton') && isvalid(data.handles_saveclipButton), set(data.handles_saveclipButton, 'Enable', 'on'); end
         if isfield(data, 'handles_zoom') && isvalid(data.handles_zoom), set(data.handles_zoom, 'Enable', 'on'); end        
 
-        % Restore the original axis limits
-        %xlim(data.handles_audioPanel, currentAudioXLim);
-        %ylim(data.handles_audioPanel, currentAudioYLim);
-        %xlim(data.handles_motionPanel, currentMotionXLim);
-        %ylim(data.handles_motionPanel, currentMotionYLim);
-
         % Release hold on the plots
         hold(data.handles_audioPanel, 'off');
-        hold(data.handles_motionPanel, 'off');
 
         % Display the time difference between the selected points
         disp(['Time difference between selected points: ', num2str(endTime - startTime), ' seconds.']);
@@ -564,15 +586,15 @@ function FLvideo(videoFile)
 
     function saveClip(hFig)
         % Check if audioLine and motionLine exist
-        if ~isfield(data, 'audioLine') || ~isvalid(data.audioLine) || ...
-                ~isfield(data, 'motionLine') || ~isvalid(data.motionLine)
+        if ~isfield(data, 'handles_audioLine1') || ~isvalid(data.handles_audioLine1) || ...
+                ~isfield(data, 'handles_audioLine2') || ~isvalid(data.handles_audioLine2)
             disp('Error: Select time points before saving a clip.');
             return;
         end
 
         % Get selected time points from audioLine and motionLine
-        audioX = data.audioLine.XData(1); % Time point from audio plot
-        motionX = data.motionLine.XData(1); % Time point from motion plot
+        audioX = data.handles_audioLine1.XData(1); % Time point from audio plot
+        motionX = data.handles_audioLine2.XData(1); % Time point from motion plot
 
         % Calculate start and end times (in seconds)
         startTime = min(audioX, motionX);
@@ -723,8 +745,8 @@ function FLvideo(videoFile)
 
     function playSelection(hFig)
         % Check if audioLine and motionLine exist
-        if ~isfield(data, 'audioLine') || ~isvalid(data.audioLine) || ...
-                ~isfield(data, 'motionLine') || ~isvalid(data.motionLine)
+        if ~isfield(data, 'handles_audioLine1') || ~isvalid(data.handles_audioLine1) || ...
+                ~isfield(data, 'handles_audioLine2') || ~isvalid(data.handles_audioLine2)
             disp('Error: No valid selection to play.');
             return;
         end
@@ -732,8 +754,8 @@ function FLvideo(videoFile)
         % Toggle playback state for the selection
         if ~isfield(data, 'isPlaying') || ~data.isPlaying
             % Get selected time points
-            audioX = data.audioLine.XData(1); % Time point from audio plot
-            motionX = data.motionLine.XData(1); % Time point from motion plot
+            audioX = data.handles_audioLine1.XData(1); % Time point from audio plot
+            motionX = data.handles_audioLine2.XData(1); % Time point from motion plot
             startTime = min(audioX, motionX);
             endTime = max(audioX, motionX);
 
@@ -772,40 +794,12 @@ function FLvideo(videoFile)
 
     end
 
-    function filteredAudio = filterMRINoise(audioSignal, audioFs, targetFreq)
-        % Comb filter: y(t) = x(t) - x(t-delay)
-        % optimized delay time to search between f0/2 and 2*f0
-        if nargin<3, targetFreq=55; end % target frequency (Hz) (range tested 22.5 to 110)
-        optimPeriod=nan;
-        optimValue=inf;
-        sample=(1:size(audioSignal,1))';
-        N=audioFs./targetFreq;
-        for nrepeat=1:4
-            if nrepeat==1, tryperiods=linspace(N/2,2*N,64);
-            elseif nrepeat==2, tryperiods=linspace(optimPeriod*(1-1.5/63),optimPeriod*(1+1.5/63),64); 
-            elseif nrepeat==3, tryperiods=linspace(optimPeriod*(1-2*1.5/63/63),optimPeriod*(1+2*1.5/63/63),64);
-            else tryperiods=optimPeriod;
-            end
-            for PeriodInSamples=tryperiods,
-                idx=PeriodInSamples;
-                idx1=ceil(idx);
-                idx2=idx1-idx;
-                y=audioSignal;
-                y(idx1+1:end)=y(idx1+1:end)-((1-idx2)*y(1:end-idx1)+idx2*y(2:end-idx1+1)); 
-                Value=mean(mean(abs(y).^2,1));
-                if Value<optimValue, optimPeriod=PeriodInSamples; optimValue=Value; end
-            end
-        end
-        filteredAudio=y;
-        fprintf('Noise supression: noise fundamental frequency %sHz\n',mat2str(audioFs/optimPeriod,6));
-    end
-
     function frame = getframeCache(currentFrameIndex) % mixes video frame image with motion highlight
         frame = data.frameCache{currentFrameIndex};
         if data.motionHighlight>1, 
             colors=[0 0 0; 1 0 0; 1 1 0];
             color=colors(data.motionHighlight,:);
-            if data.motionMeasure==1
+            if data.plotMeasure==1
                 if currentFrameIndex==1, dframe=sqrt(data.frameMotion{currentFrameIndex});
                 elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotion{currentFrameIndex-1});
                 else dframe=sqrt((data.frameMotion{currentFrameIndex}+data.frameMotion{currentFrameIndex-1})/2);
@@ -819,4 +813,114 @@ function FLvideo(videoFile)
             frame=uint8(cat(3, round((1-dframe).*double(frame(:,:,1))+255*dframe*color(1)), round((1-dframe).*double(frame(:,:,2))+255*dframe*color(2)), round((1-dframe).*double(frame(:,:,3))+255*dframe*color(3)) ));
         end
     end
+end
+
+function filteredAudio = filterMRINoise(audioSignal, audioFs, targetFreq)
+% Comb filter: y(t) = x(t) - x(t-delay)
+% optimized delay time to search between f0/2 and 2*f0
+if nargin<3, targetFreq=55; end % target frequency (Hz) (range tested 22.5 to 110)
+optimPeriod=nan;
+optimValue=inf;
+sample=(1:size(audioSignal,1))';
+N=audioFs./targetFreq;
+for nrepeat=1:4
+    if nrepeat==1, tryperiods=linspace(N/2,2*N,64);
+    elseif nrepeat==2, tryperiods=linspace(optimPeriod*(1-1.5/63),optimPeriod*(1+1.5/63),64);
+    elseif nrepeat==3, tryperiods=linspace(optimPeriod*(1-2*1.5/63/63),optimPeriod*(1+2*1.5/63/63),64);
+    else tryperiods=optimPeriod;
+    end
+    for PeriodInSamples=tryperiods,
+        idx=PeriodInSamples;
+        idx1=ceil(idx);
+        idx2=idx1-idx;
+        y=audioSignal;
+        y(idx1+1:end)=y(idx1+1:end)-((1-idx2)*y(1:end-idx1)+idx2*y(2:end-idx1+1));
+        Value=mean(mean(abs(y).^2,1));
+        if Value<optimValue, optimPeriod=PeriodInSamples; optimValue=Value; end
+    end
+end
+filteredAudio=y;
+fprintf('Noise supression: noise fundamental frequency %sHz\n',mat2str(audioFs/optimPeriod,6));
+end
+
+
+% note: files from FLvoice (2025/02/01 version)
+% consider integrating with FLvoice package in the future
+
+function [P,t,f]=flvoice_spectrogram(s, fs, windowsize, windowoverlap, Nfft);
+if nargin<5||isempty(Nfft), Nfft=pow2(nextpow2(fs/2)); end
+S=flvoice_samplewindow(s(:), windowsize,windowoverlap,'none','same');
+w=flvoice_hanning(size(S,1));
+S=repmat(w,1,size(S,2)).*(S-repmat(mean(S,1),size(S,1),1));
+S=abs(fft(S,max(Nfft,size(S,1)))).^2;
+t=(0:size(S,2)-1)*(windowsize-windowoverlap)/fs;
+f=(0:size(S,1)-1)*fs/size(S,1);
+f=f(2:floor(size(S,1)/2));
+S=S(2:floor(size(S,1)/2),:);
+P=100+10*log10(2*S/fs/(w'*w)); % power spectrum in dB/Hz units
+end
+
+function [Y,idx_X,idxE]=flvoice_samplewindow(X, Wlength, Nlength, Type, Extent);
+sX=[size(X),1];
+if nargin<2 | isempty(Wlength), Wlength=sX(1); end 
+if nargin<3 | isempty(Nlength), Nlength=floor(Wlength/2); end
+if nargin<4 | isempty(Type), Type='none'; end
+if nargin<5 | isempty(Extent), Extent='tight'; end
+if lower(Type(1))=='c', docentering=1; Type=Type(2:end); else, docentering=0; end
+prodsX=prod(sX(2:end));
+switch(lower(Extent)),
+case {'valid','tight'}, Base=0;
+case 'same', Base=floor(Wlength/2);
+otherwise, Base=Nlength;
+end
+X=cat(1,zeros([Base,sX(2:end)]),X,zeros([Wlength-Base-1,sX(2:end)]));
+sY=1+floor((size(X,1)-Wlength)/(Wlength-Nlength));
+idx_W=repmat((1:Wlength)',[1,sY]); 
+idx_X=idx_W + repmat((Wlength-Nlength)*(0:sY-1),[Wlength,1]);
+switch(lower(Type)),
+case 'hamming',
+    W=flvoice_hamming(Wlength);
+case 'hanning',
+    W=flvoice_hanning(Wlength);
+case 'boxcar',
+    W=ones(Wlength,1);
+case 'triang',
+    W=(1:Wlength)'/ceil(Wlength/2);
+    W=min(W,2-W);
+case 'none',
+    W=ones(Wlength,1);
+end
+if docentering,
+    k=Wlength-Nlength+1;
+    h=flvoice_hamming(k); h=h/sum(h);
+    e=convn(X.^2,h,'same');
+    k2=Wlength;
+    idx_k2=floor((Wlength-k2)/2)+(1:k2)';
+    E=e(idx_X(idx_k2,:),:);%.*W(idx_W(:),ones(1,prod(sX(2:end))));
+    E=reshape(E,[k2,sY,sX(2:end)]);
+    [nill,idxE]=max(E,[],1);
+    idx_X=max(1,min(size(X,1),idx_X+repmat(idxE-1+(idx_k2(1)-idx_k2(round(end/2))),[Wlength,1])));
+end
+if strcmp(lower(Type),'none'), Y=X(idx_X(:),:); else, Y=X(idx_X(:),:).*W(idx_W(:),ones(1,prod(sX(2:end)))); end
+Y=reshape(Y,[Wlength,sY,sX(2:end)]);
+idx_X=idx_X-Base;
+idx_X(idx_X<=0 | idx_X>sX(1))=nan;
+switch(lower(Extent)),
+case {'valid','tight'},
+    idx=~all(~isnan(idx_X),1);
+    Y(:,idx,:)=[]; idx_X(:,idx)=[];
+case 'same',
+    idx=isnan(idx_X(1+floor(end/2),:));
+    Y(:,idx,:)=[]; idx_X(:,idx)=[];
+end
+end
+
+function w=flvoice_hanning(n)
+if ~rem(n,2),%even
+    w = .5*(1 - cos(2*pi*(1:n/2)'/(n+1))); 
+    w=[w;flipud(w)];
+else,%odd
+   w = .5*(1 - cos(2*pi*(1:(n+1)/2)'/(n+1)));
+   w = [w; flipud(w(1:end-1))];
+end
 end
