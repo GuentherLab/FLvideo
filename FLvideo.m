@@ -156,13 +156,13 @@ function FLvideo(videoFile)
         data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [600, 75, 130, 20], ...
             'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel);
         
-        uicontrol('Style', 'text', 'String', 'Audio signal', 'Position', [490, 55, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'Value', 1, 'string', {'raw audio','MRI denoised audio'}, 'Position', [600, 55, 130, 20], ...
-            'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', data.handles_buttonPanel);
+        %uicontrol('Style', 'text', 'String', 'Audio signal', 'Position', [490, 55, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        %data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'Value', 1, 'string', {'raw audio','MRI denoised audio'}, 'Position', [600, 55, 130, 20], ...
+        %    'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Plot', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_plotmeasure=uicontrol('Style', 'popupmenu', 'string', {'velocity of movements', 'acceleration of movements', 'audio spectrogram'}, 'Value', plotMeasure, 'Position', [600, 35, 130, 20], ...
-            'Callback', @(src, event) changePlotMeasure(src, event, hFig), 'Parent', data.handles_buttonPanel);
+        uicontrol('Style', 'text', 'String', 'Colormap', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula'}, 'Value', plotMeasure, 'Position', [600, 35, 130, 20], ...
+            'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 15, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
         data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [600, 15, 130, 20], ...
@@ -228,10 +228,12 @@ function FLvideo(videoFile)
             ylim(data.handles_audioPanel, [-1, 1]*1.1*max(max(abs(audioSignal)))); % Apply y-limits for the audio plot
             %xlabel(data.handles_audioPanel, 'Time (s)');
             ylabel(data.handles_audioPanel, 'Audio Signal Intensity');
-            title(data.handles_audioPanel, 'Audio Signal with Current Frame');
+            %title(data.handles_audioPanel, 'Audio Signal with Current Frame');
             hold(data.handles_audioPanel, 'off');
             set(data.handles_audioPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1], 'xticklabel',[]);
             set([data.handles_audioPanel; data.handles_audioPlot(:); data.handles_audioShading(:)],'buttondownfcn',@(varargin)thisFrame);
+
+            data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'string', {'raw Audio Signal','MRI denoised Audio Signal'}, 'Value', plotMeasure, 'units','norm','Position', [0.35, 0.5, 0.3, 0.03], 'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', hFig);
 
             % Create a dedicated axes for the global motion, global acceleration, or spectrogram
             data.handles_motionPanel = axes('Position', [0.1, 0.25, 0.8, 0.1], 'Parent', hFig); 
@@ -251,7 +253,6 @@ function FLvideo(videoFile)
             %end
             xlabel(data.handles_motionPanel, 'Time (s)');
             ylabel(data.handles_motionPanel, 'Motion Intensity');
-            title(data.handles_motionPanel, 'Global Motion Across Frames');
             set(data.handles_motionPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
             set([data.handles_motionPanel; data.handles_motionPlot(:); data.handles_motionShading(:)],'buttondownfcn',@(varargin)thisFrame);
 
@@ -265,10 +266,11 @@ function FLvideo(videoFile)
             motionYLim3 = [0 8000];
             xlabel(data.handles_motionPanel2, 'Time (s)');
             ylabel(data.handles_motionPanel2, 'Frequency (Hz)'); % note: change later when adding more plots
-            title(data.handles_motionPanel2, 'Audio Spectrogram');
             set(data.handles_motionPanel2, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
             set([data.handles_motionPanel2; data.handles_motionPlot2(:); data.handles_motionShading2(:)],'buttondownfcn',@(varargin)thisFrame);
 
+            data.handles_plotmeasure=uicontrol('Style', 'popupmenu', 'string', {'Velocity of Movements', 'Acceleration of Movements', 'Audio Spectrogram'}, 'Value', plotMeasure, 'units','norm','Position', [0.35, 0.35, 0.3, 0.03], 'Callback', @(src, event) changePlotMeasure(src, event, hFig), 'Parent', hFig);
+            
             % Store information in shared "data" variable
             data.isPlaying = false;
             data.currentFrame = 1; % Start at the first frame
@@ -292,6 +294,7 @@ function FLvideo(videoFile)
             data.plotMeasure = plotMeasure;
             data.audioSignalSelect = 1;
             data.layout = layout;
+            data.colormap=1-gray(256);
             data.audioYLim = audioYLim;
             data.motionYLim = max([motionYLim; motionYLim2; motionYLim3]);
             data.zoomin = false;
@@ -440,6 +443,13 @@ function FLvideo(videoFile)
         if isfield(data,'hVideo'), set(data.hVideo, 'CData', getframeCache(data.currentFrame)); end
     end
 
+    function changeColormap(~, ~, hFig);
+        colormaps={1-gray(256),jet(256),parula(256)};
+        data.colormap=colormaps{get(data.handles_colormap,'value')};
+        if isfield(data,'globalMotion'), changePlotMeasure(); end
+    end
+
+
     function changePlotMeasure(~, ~, hFig);
         data.plotMeasure=get(data.handles_plotmeasure,'value');
         if isfield(data,'globalMotion'), 
@@ -469,7 +479,8 @@ function FLvideo(videoFile)
                 end
                 c1=min(mean(plotdataC,1));
                 c2=max(plotdataC(:));
-                set(data.handles_motionPlot2,'cdata',repmat(1-max(0,plotdataC-c1)/max(eps,c2-c1),[1,1,3]),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
+                set(data.handles_motionPlot2,'cdata',ind2rgb(1+floor((size(data.colormap,1)-1)*max(0,plotdataC-c1)/max(eps,c2-c1)),data.colormap),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
+                %set(data.handles_motionPlot2,'cdata',repmat(1-max(0,plotdataC-c1)/max(eps,c2-c1),[1,1,3]),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
                 set(data.handles_motionPanel2,'ydir','normal','ylim',[min(plotdataY) max(plotdataY)],'visible','on');
                 set(data.handles_motionShading2,'visible','on');
                 set([data.handles_motionPanel,data.handles_motionPlot,data.handles_motionShading],'visible','off');
@@ -509,6 +520,8 @@ function FLvideo(videoFile)
                 set(data.handles_audioPanel,'Position', [0.1, 0.4, 0.8, 0.1]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.25, 0.8, 0.1]);
                 set(data.handles_motionPanel2, 'Position', [0.1, 0.25, 0.8, 0.1]);
+                set(data.handles_plotmeasure,'Position',[0.35, 0.35, 0.3, 0.03]);
+                set(data.handles_audiosignal,'Position',[0.35, 0.5, 0.3, 0.03]);
                 drawnow;
             case 2, % maximized (horizontal layout)
                 set(data.handles_hFig,'Position',[0.01, 0, .98, .975]);
@@ -517,6 +530,8 @@ function FLvideo(videoFile)
                 set(data.handles_audioPanel,'Position', [0.575, 0.65, 0.4, 0.25]);
                 set(data.handles_motionPanel, 'Position', [0.575, 0.275, 0.4, 0.25]);
                 set(data.handles_motionPanel2, 'Position', [0.575, 0.275, 0.4, 0.25]);
+                set(data.handles_plotmeasure,'Position',[0.675, 0.525, 0.2, 0.03]);
+                set(data.handles_audiosignal,'Position',[0.675, 0.9, 0.2, 0.03]);
                 drawnow;
             case 3, % maximized (vertical layout)
                 set(data.handles_hFig,'Position',[.01, 0, .98, .975]);
@@ -525,6 +540,8 @@ function FLvideo(videoFile)
                 set(data.handles_audioPanel,'Position', [0.1, 0.275, 0.8, 0.075]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.175, 0.8, 0.075]);
                 set(data.handles_motionPanel2, 'Position', [0.1, 0.175, 0.8, 0.075]);
+                set(data.handles_plotmeasure,'Position',[0.4, 0.245, 0.2, 0.03]);
+                set(data.handles_audiosignal,'Position',[0.4, 0.345, 0.2, 0.03]);
                 drawnow;
                 % set(data.handles_videoPanel,'Position', [0.0, 0.15, 0.45, 0.85]);
                 % set(data.handles_audioPanel,'Position', [0.50, 0.325, 0.20, 0.5]);
