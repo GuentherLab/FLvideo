@@ -161,7 +161,7 @@ function FLvideo(videoFile)
         %    'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         uicontrol('Style', 'text', 'String', 'Colormap', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula'}, 'Value', plotMeasure, 'Position', [600, 35, 130, 20], ...
+        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', plotMeasure, 'Position', [600, 35, 130, 20], ...
             'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 15, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
@@ -444,7 +444,7 @@ function FLvideo(videoFile)
     end
 
     function changeColormap(~, ~, hFig);
-        colormaps={1-gray(256),jet(256),parula(256)};
+        colormaps={1-gray(256),jet(256),parula(256),hot(256),sky(256),flipud(bone(256)),copper(256)};
         data.colormap=colormaps{get(data.handles_colormap,'value')};
         if isfield(data,'globalMotion'), changePlotMeasure(); end
     end
