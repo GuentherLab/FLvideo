@@ -60,7 +60,9 @@ function FLvideo(videoFile)
         isready='off';
         layout=1;
         motionHighlight=1;
+        audioSignalSelect=1;
         plotMeasure=1;
+        cmapselect=1;
         % Create the main figure for video, audio, and controls
         if nargin<2, 
             hFig = figure('units','norm','Position', [.25, .1, .5, .8], 'MenuBar', 'none', 'NumberTitle', 'off', 'Name', 'Video Player','color','w');
@@ -68,6 +70,8 @@ function FLvideo(videoFile)
             try, layout=get(data.handles_layout,'value'); end
             try, motionHighlight=get(data.handles_motionhighlight,'value'); end
             try, plotMeasure=get(data.handles_plotmeasure,'value'); end
+            try, audioSignalSelect=get(data.handles_audiosignal,'value'); end
+            try, cmapselect=get(data.handles_colormap,'value'); end
         end
         data=[];
         if ~isempty(videoFile), 
@@ -148,20 +152,16 @@ function FLvideo(videoFile)
         uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [490, 95, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [600, 95, 130, 20], ...
+        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [490, 75, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [600, 75, 130, 20], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [490, 75, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [600, 75, 130, 20], ...
+        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [490, 55, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [600, 55, 130, 20], ...
             'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel);
         
-        %uicontrol('Style', 'text', 'String', 'Audio signal', 'Position', [490, 55, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        %data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'Value', 1, 'string', {'raw audio','MRI denoised audio'}, 'Position', [600, 55, 130, 20], ...
-        %    'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', data.handles_buttonPanel);
-
         uicontrol('Style', 'text', 'String', 'Colormap', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', plotMeasure, 'Position', [600, 35, 130, 20], ...
+        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'Position', [600, 35, 130, 20], ...
             'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 15, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
@@ -233,7 +233,7 @@ function FLvideo(videoFile)
             set(data.handles_audioPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1], 'xticklabel',[]);
             set([data.handles_audioPanel; data.handles_audioPlot(:); data.handles_audioShading(:)],'buttondownfcn',@(varargin)thisFrame);
 
-            data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'string', {'raw Audio Signal','MRI denoised Audio Signal'}, 'Value', plotMeasure, 'units','norm','Position', [0.35, 0.5, 0.3, 0.03], 'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', hFig);
+            data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'string', {'raw Audio Signal','MRI denoised Audio Signal'}, 'Value', audioSignalSelect, 'units','norm','Position', [0.35, 0.5, 0.3, 0.03], 'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', hFig);
 
             % Create a dedicated axes for the global motion, global acceleration, or spectrogram
             data.handles_motionPanel = axes('Position', [0.1, 0.25, 0.8, 0.1], 'Parent', hFig); 
@@ -292,7 +292,7 @@ function FLvideo(videoFile)
             data.spectrogram = [];
             data.motionHighlight = motionHighlight;
             data.plotMeasure = plotMeasure;
-            data.audioSignalSelect = 1;
+            data.audioSignalSelect = audioSignalSelect;
             data.layout = layout;
             data.colormap=1-gray(256);
             data.audioYLim = audioYLim;
@@ -306,8 +306,9 @@ function FLvideo(videoFile)
 
             % adds video name 
             set(hFig, 'name', sprintf('Video Player : %s',videoFile));
-            changePlotMeasure();
-            if layout~=1, changeLayout(); end
+            changeAudioSignal();
+            changeColormap();
+            changeLayout();
         else
             data.handles_videoPanel=[];
             data.handles_audioPanel=[];
@@ -543,11 +544,6 @@ function FLvideo(videoFile)
                 set(data.handles_plotmeasure,'Position',[0.4, 0.245, 0.2, 0.03]);
                 set(data.handles_audiosignal,'Position',[0.4, 0.345, 0.2, 0.03]);
                 drawnow;
-                % set(data.handles_videoPanel,'Position', [0.0, 0.15, 0.45, 0.85]);
-                % set(data.handles_audioPanel,'Position', [0.50, 0.325, 0.20, 0.5]);
-                % set(data.handles_motionPanel, 'Position', [0.75, 0.325, 0.20, 0.5]);
-                % set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
-                % set(data.handles_hFig,'Position',[0, 0, 1, 1]);
         end
     end
 
