@@ -152,20 +152,20 @@ function FLvideo(videoFile)
         uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [490, 75, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [600, 75, 130, 20], ...
+        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [490, 89, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [600, 89, 130, 20], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [490, 55, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [600, 55, 130, 20], ...
+        uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [490, 66, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'Position', [600, 66, 130, 20], ...
             'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel);
         
-        uicontrol('Style', 'text', 'String', 'Colormap', 'Position', [490, 35, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'Position', [600, 35, 130, 20], ...
+        uicontrol('Style', 'text', 'String', 'Colormap', 'Position', [490, 43, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'Position', [600, 43, 130, 20], ...
             'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
-        uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 15, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [600, 15, 130, 20], ...
+        uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 20, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [600, 20, 130, 20], ...
             'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         % Bottom row: Selection and save controls
@@ -526,8 +526,8 @@ function FLvideo(videoFile)
                 drawnow;
             case 2, % maximized (horizontal layout)
                 set(data.handles_hFig,'Position',[0.01, 0, .98, .975]);
-                set(data.handles_buttonPanel, 'Position', [0.575, 0.025, 0.4, 0.15]);
-                set(data.handles_videoPanel,'Position', [0.0, 0.0, 0.55, 1]);
+                set(data.handles_buttonPanel, 'Position', [0.575, 0.025, 0.4, 0.13]);
+                set(data.handles_videoPanel,'Position', [0.0, 0.0, 0.54, 1]);
                 set(data.handles_audioPanel,'Position', [0.575, 0.65, 0.4, 0.25]);
                 set(data.handles_motionPanel, 'Position', [0.575, 0.275, 0.4, 0.25]);
                 set(data.handles_motionPanel2, 'Position', [0.575, 0.275, 0.4, 0.25]);
@@ -536,7 +536,7 @@ function FLvideo(videoFile)
                 drawnow;
             case 3, % maximized (vertical layout)
                 set(data.handles_hFig,'Position',[.01, 0, .98, .975]);
-                set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
+                set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.13]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.4, 1, 0.6]);
                 set(data.handles_audioPanel,'Position', [0.1, 0.275, 0.8, 0.075]);
                 set(data.handles_motionPanel, 'Position', [0.1, 0.175, 0.8, 0.075]);
