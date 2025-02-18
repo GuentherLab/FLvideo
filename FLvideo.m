@@ -465,13 +465,15 @@ function FLvideo(videoFile)
                         plotdataX = (1:numel(plotdataY))/data.FrameRate;
                     case {4,5}, 
                         if ~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio)
-                            hwindowsize=0.050;
-                            [data.harmonicRatio.P1,data.harmonicRatio.t,data.harmonicRatio.E1]=harmonicRatio(data.audioSignal1,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate));
-                            [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignal2,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate));
-                            data.harmonicRatio.P1 = 10*log10(data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1)); % HR to HNR
-                            data.harmonicRatio.P2 = 10*log10(data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2)); % HR to HNR
+                            hwindowsize=3/75;
+                            [data.harmonicRatio.P1,data.harmonicRatio.t,data.harmonicRatio.E1]=harmonicRatio(data.audioSignal1,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
+                            [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignal2,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                             data.harmonicRatio.E1 = sqrt(max(0,data.harmonicRatio.E1)); % MS to RMS
                             data.harmonicRatio.E2 = sqrt(max(0,data.harmonicRatio.E2)); % MS to RMS
+                            data.harmonicRatio.P1 = 10*log10(max(0,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
+                            data.harmonicRatio.P2 = 10*log10(max(0,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
+                            %data.harmonicRatio.P1 = -10*log10(1e-3)+10*log10(max(0,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
+                            %data.harmonicRatio.P2 = -10*log10(1e-3)+10*log10(max(0,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
                         end
                         if data.plotMeasure==4 % Plot harmonic to noise ratio
                             if data.audioSignalSelect==1, plotdataY = data.harmonicRatio.P1;
@@ -972,18 +974,29 @@ else,%odd
 end
 end
 
-function [w,t0,e]=harmonicRatio(s,fs,windowlength,overlaplength)
+function [w,t0,e]=harmonicRatio(s,fs,windowlength,overlaplength,ampthr)
+if nargin<3||isempty(windowlength), windowlength=round(4.5/75*fs); end % from Praat: 4.5 times the minimum pitch (75Hz)
+if nargin<4||isempty(overlaplength), overlaplength=windowlength-max(1,round(0.001*fs)); end
+if nargin<5||isempty(ampthr), ampthr=0.1; end % from Praat: silence threshold
 s2=flvoice_samplewindow(s(:),windowlength,overlaplength,'none','tight');
 Nt=size(s2,2);
-s2=s2.*repmat(flvoice_hamming(windowlength),[1,Nt]);
+hwindow=flvoice_hanning(windowlength);
+%valid=any(abs(s2)>ampthr*max(abs(s)),1);
+%valid=mean(abs(s2)>ampthr*max(abs(s)),1)>.05;
+s2=s2.*repmat(hwindow,[1,Nt]);
+valid=any(abs(s2)>ampthr*max(abs(s)),1);
+%valid=any(abs(s2)>ampthr,1);
 t0=(windowlength/2+(windowlength-overlaplength)*(0:Nt-1)')/fs; % note: time of middle sample within window
-
+f=min(2^nextpow2(2*windowlength-1):-1:1, 0:2^nextpow2(2*windowlength-1)-1);
+%lowpass=0.03.^((f/800).^2);
+%cc=real(ifft(abs(lowpass'.*fft(s2,2^nextpow2(2*windowlength-1))).^2));
 cc=real(ifft(abs(fft(s2,2^nextpow2(2*windowlength-1))).^2));
 cp=flipud(cumsum(s2.^2,1));
-idx0=1:min(windowlength-1,ceil(.040*fs)); % remove delays above 40ms
+idx0=1:min(windowlength-1,ceil(.040*fs)); % remove delays above 40ms (<25Hz)
 R=cc(idx0,:)./max(eps,sqrt(repmat(cc(1,:),numel(idx0),1).*cp(idx0,:))); % normalized cross-correlation
-[w,idx]=max(R.*(cumsum(R<0,1)>0),[],1); % remove first peak (up to first zero-crossing)
+[w,idx]=max(R.*(cumsum(R<0,1)>0),[],1); % find maximum cross-correlation after removing first peak (up to first zero-crossing)
 w3=R(max(1,min(size(R,1), repmat(idx,3,1)+repmat((-1:1)',1,numel(idx))))+(0:size(R,2)-1)*size(R,1)); % parabolic peak-height interpolation
 w=((w>0).*max(0,min(1, w3(2,:)+(w3(1,:)-w3(3,:)).^2./(2*w3(2,:)-w3(3,:)-w3(1,:))/8)))';
-e=cc(1,:)/windowlength;
+e=cc(1,:)'/sum(hwindow);
+w=w.*valid';
 end
