@@ -252,7 +252,7 @@ function FLvideo(videoFile)
             %else ylim(data.handles_motionPanel, motionYLim2);
             %end
             xlabel(data.handles_motionPanel, 'Time (s)');
-            ylabel(data.handles_motionPanel, 'Motion Intensity');
+            %ylabel(data.handles_motionPanel, 'Motion Intensity');
             set(data.handles_motionPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
             set([data.handles_motionPanel; data.handles_motionPlot(:); data.handles_motionShading(:)],'buttondownfcn',@(varargin)thisFrame);
 
@@ -269,7 +269,7 @@ function FLvideo(videoFile)
             set(data.handles_motionPanel2, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
             set([data.handles_motionPanel2; data.handles_motionPlot2(:); data.handles_motionShading2(:)],'buttondownfcn',@(varargin)thisFrame);
 
-            data.handles_plotmeasure=uicontrol('Style', 'popupmenu', 'string', {'Velocity of Movements', 'Acceleration of Movements', 'Audio Spectrogram'}, 'Value', plotMeasure, 'units','norm','Position', [0.35, 0.35, 0.3, 0.03], 'Callback', @(src, event) changePlotMeasure(src, event, hFig), 'Parent', hFig);
+            data.handles_plotmeasure=uicontrol('Style', 'popupmenu', 'string', {'Velocity of Movements', 'Acceleration of Movements', 'Audio Spectrogram', 'Audio Harmonic to Noise Ratio', 'Acoustic Energy'}, 'Value', plotMeasure, 'units','norm','Position', [0.35, 0.35, 0.3, 0.03], 'Callback', @(src, event) changePlotMeasure(src, event, hFig), 'Parent', hFig);
             
             % Store information in shared "data" variable
             data.isPlaying = false;
@@ -290,6 +290,7 @@ function FLvideo(videoFile)
             data.globalMotion=globalMotion;
             data.globalMotion2=globalMotion2;
             data.spectrogram = [];
+            data.harmonicRatio = [];
             data.motionHighlight = motionHighlight;
             data.plotMeasure = plotMeasure;
             data.audioSignalSelect = audioSignalSelect;
@@ -454,13 +455,37 @@ function FLvideo(videoFile)
     function changePlotMeasure(~, ~, hFig);
         data.plotMeasure=get(data.handles_plotmeasure,'value');
         if isfield(data,'globalMotion'), 
-            if ismember(data.plotMeasure,[1,2]) % plots
+            if ismember(data.plotMeasure,[1,2,4,5]) % plots
                 switch(data.plotMeasure),
-                    case 1, plotdata = data.globalMotion; % Plot global velocity
-                    case 2, plotdata = data.globalMotion2; % Plot global acceleration
+                    case 1, 
+                        plotdataY = data.globalMotion; % Plot global velocity
+                        plotdataX = (1:numel(plotdataY))/data.FrameRate;
+                    case 2, 
+                        plotdataY = data.globalMotion2; % Plot global acceleration
+                        plotdataX = (1:numel(plotdataY))/data.FrameRate;
+                    case {4,5}, 
+                        if ~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio)
+                            hwindowsize=0.050;
+                            [data.harmonicRatio.P1,data.harmonicRatio.t,data.harmonicRatio.E1]=harmonicRatio(data.audioSignal1,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate));
+                            [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignal2,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate));
+                            data.harmonicRatio.P1 = 10*log10(data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1)); % HR to HNR
+                            data.harmonicRatio.P2 = 10*log10(data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2)); % HR to HNR
+                            data.harmonicRatio.E1 = sqrt(max(0,data.harmonicRatio.E1)); % MS to RMS
+                            data.harmonicRatio.E2 = sqrt(max(0,data.harmonicRatio.E2)); % MS to RMS
+                        end
+                        if data.plotMeasure==4 % Plot harmonic to noise ratio
+                            if data.audioSignalSelect==1, plotdataY = data.harmonicRatio.P1;
+                            else plotdataY = data.harmonicRatio.P2;
+                            end
+                        else % Plot acoustic energy
+                            if data.audioSignalSelect==1, plotdataY = data.harmonicRatio.E1;
+                            else plotdataY = data.harmonicRatio.E2;
+                            end
+                        end
+                        plotdataX = data.harmonicRatio.t;
                 end
-                set(data.handles_motionPlot,'ydata',plotdata,'visible','on');
-                set(data.handles_motionPanel,'ylim',[0 1.1*max(plotdata)],'visible','on');
+                set(data.handles_motionPlot,'xdata',plotdataX,'ydata',plotdataY,'visible','on');
+                set(data.handles_motionPanel,'ylim',[0 1.1*max(plotdataY)],'visible','on');
                 set(data.handles_motionShading,'visible','on');
                 set([data.handles_motionPanel2,data.handles_motionPlot2,data.handles_motionShading2],'visible','off');
             else % images
@@ -812,7 +837,7 @@ function FLvideo(videoFile)
         if data.motionHighlight>1, 
             colors=[0 0 0; 1 0 0; 1 1 0];
             color=colors(data.motionHighlight,:);
-            if data.plotMeasure==1
+            if data.plotMeasure~=2 % by default shows velocity of motion (unless acceleration timecourse is being displayed)
                 if currentFrameIndex==1, dframe=sqrt(data.frameMotion{currentFrameIndex});
                 elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotion{currentFrameIndex-1});
                 else dframe=sqrt((data.frameMotion{currentFrameIndex}+data.frameMotion{currentFrameIndex-1})/2);
@@ -936,4 +961,20 @@ else,%odd
    w = .5*(1 - cos(2*pi*(1:(n+1)/2)'/(n+1)));
    w = [w; flipud(w(1:end-1))];
 end
+end
+
+function [w,t0,e]=harmonicRatio(s,fs,windowlength,overlaplength)
+s2=flvoice_samplewindow(s(:),windowlength,overlaplength,'none','tight');
+Nt=size(s2,2);
+s2=s2.*repmat(flvoice_hamming(windowlength),[1,Nt]);
+t0=(windowlength/2+(windowlength-overlaplength)*(0:Nt-1)')/fs; % note: time of middle sample within window
+
+cc=real(ifft(abs(fft(s2,2^nextpow2(2*windowlength-1))).^2));
+cp=flipud(cumsum(s2.^2,1));
+idx0=1:min(windowlength-1,ceil(.040*fs)); % remove delays above 40ms
+R=cc(idx0,:)./max(eps,sqrt(repmat(cc(1,:),numel(idx0),1).*cp(idx0,:))); % normalized cross-correlation
+[w,idx]=max(R.*(cumsum(R<0,1)>0),[],1); % remove first peak (up to first zero-crossing)
+w3=R(max(1,min(size(R,1), repmat(idx,3,1)+repmat((-1:1)',1,numel(idx))))+(0:size(R,2)-1)*size(R,1)); % parabolic peak-height interpolation
+w=((w>0).*max(0,min(1, w3(2,:)+(w3(1,:)-w3(3,:)).^2./(2*w3(2,:)-w3(3,:)-w3(1,:))/8)))';
+e=cc(1,:)/windowlength;
 end
