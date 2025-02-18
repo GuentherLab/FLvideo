@@ -470,10 +470,10 @@ function FLvideo(videoFile)
                             [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignal2,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                             data.harmonicRatio.E1 = sqrt(max(0,data.harmonicRatio.E1)); % MS to RMS
                             data.harmonicRatio.E2 = sqrt(max(0,data.harmonicRatio.E2)); % MS to RMS
-                            data.harmonicRatio.P1 = 10*log10(max(0,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
-                            data.harmonicRatio.P2 = 10*log10(max(0,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
-                            %data.harmonicRatio.P1 = -10*log10(1e-3)+10*log10(max(0,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
-                            %data.harmonicRatio.P2 = -10*log10(1e-3)+10*log10(max(0,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
+                            %data.harmonicRatio.P1 = -10*log10(1e-1)+10*log10(max(0,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
+                            %data.harmonicRatio.P2 = -10*log10(1e-1)+10*log10(max(0,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
+                            data.harmonicRatio.P1 = -10*log10(1e-1)+10*log10(max(1e-1,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
+                            data.harmonicRatio.P2 = -10*log10(1e-1)+10*log10(max(1e-1,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
                         end
                         if data.plotMeasure==4 % Plot harmonic to noise ratio
                             if data.audioSignalSelect==1, plotdataY = data.harmonicRatio.P1;
