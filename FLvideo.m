@@ -141,13 +141,14 @@ function FLvideo(videoFile)
                 audioSignalDenoised = filterMRINoise(audioSignal, audioFs);
                 NewData=true;
                 ComputeDerivedMeasures=true;
+                set(hFig, 'name', sprintf('Video Player : %s',videoFile));
             catch me
                 errordlg([{'Problem reading video file:'} getReport(me,'basic','hyperlinks','off')], 'Video Player error');
                 isready='off';
             end
         end
         if nargin>=2, 
-            set(hFig, 'name', 'Video Player');
+            %set(hFig, 'name', 'Video Player');
             clf(hFig);
         end
         % Create a panel for the control buttons
@@ -231,6 +232,8 @@ function FLvideo(videoFile)
                 end
                 frameMotionVel=cellfun(@(x)x/maxframeMotion,frameMotionVel,'uni',0);
                 frameMotionAcc=cellfun(@(x)x/maxframeMotion2,frameMotionAcc,'uni',0);
+                globalMotionVel=interpft(globalMotionVel,length(audioSignal)); % resample to audio sampling rate (NOTE: sinc interpolation)
+                globalMotionAcc=interpft(globalMotionAcc,length(audioSignal));
                 dataspectrogram=[];
                 dataharmonicRatio=[];
                 %globalMotionVel = [globalMotionVel, globalMotionVel(end)]; % Match the length to numFrames
@@ -351,7 +354,6 @@ function FLvideo(videoFile)
             data.videoFile = videoFile;
 
             % adds video name 
-            set(hFig, 'name', sprintf('Video Player : %s',videoFile));
             changeAudioSignal();
             changeColormap();
             zoomIn(zoomin);
@@ -519,10 +521,12 @@ function FLvideo(videoFile)
                     switch(data.plotMeasure(nplot)),
                         case 1,
                             plotdataY = data.globalMotionVel; % Plot global velocity
-                            plotdataX = (1:numel(plotdataY))/data.FrameRate;
+                            %plotdataX = (1:numel(plotdataY))/data.FrameRate;
+                            plotdataX = (0:numel(plotdataY)-1)/data.SampleRate; % note: use this when data has been interpolated to audio sampling rate
                         case 2,
                             plotdataY = data.globalMotionAcc; % Plot global acceleration
-                            plotdataX = (1:numel(plotdataY))/data.FrameRate;
+                            %plotdataX = (1:numel(plotdataY))/data.FrameRate;
+                            plotdataX = (0:numel(plotdataY)-1)/data.SampleRate; % note: use this when data has been interpolated to audio sampling rate
                         case {4,5},
                             if ~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio)
                                 hwindowsize=3/75;
