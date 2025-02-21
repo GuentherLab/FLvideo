@@ -62,7 +62,7 @@ function FLvideo(videoFile)
         layout=1;
         motionHighlight=1;
         audioSignalSelect=1;
-        nplots=0;
+        nplots=1;
         plotMeasure=[];
         cmapselect=1;
         zoomWindow=[];
