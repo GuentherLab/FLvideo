@@ -575,9 +575,11 @@ function FLvideo(videoFile)
                             else plotdataC=data.spectrogram.P2(mask,:);
                             end
                     end
-                    c1=prctile(mean(plotdataC,1),5);
+                    c1=prctile(mean(plotdataC,1),1);
                     c2=max(plotdataC(:));
                     set(data.handles_otherPlot2(nplot),'cdata',ind2rgb(1+floor((size(data.colormap,1)-1)*max(0,plotdataC-c1)/max(eps,c2-c1)),data.colormap),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
+                    %[nill,nill,idx]=unique(plotdataC);
+                    %set(data.handles_otherPlot2(nplot),'cdata',ind2rgb(1+floor((size(data.colormap,1)-1)*max(0,reshape(idx,size(plotdataC))-1)/max(eps,max(idx)-1)),data.colormap),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
                     set(data.handles_otherPanel2(nplot),'ydir','normal','ylim',[min(plotdataY) max(plotdataY)],'visible','on');
                     set(data.handles_otherShading2(nplot),'visible','on');
                     set([data.handles_otherPanel1(nplot),data.handles_otherPlot1(nplot),data.handles_otherShading1(nplot)],'visible','off');
