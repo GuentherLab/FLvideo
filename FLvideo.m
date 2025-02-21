@@ -58,6 +58,7 @@ function FLvideo(videoFile)
         isready='off';
         NewData=false;
         ComputeDerivedMeasures=false;
+        selectspeed=5;
         layout=1;
         motionHighlight=1;
         audioSignalSelect=1;
@@ -71,6 +72,7 @@ function FLvideo(videoFile)
         if nargin<2, 
             hFig = figure('units','norm','Position', [.25, .1, .5, .8], 'MenuBar', 'none', 'NumberTitle', 'off', 'Name', 'Video Player','color','w', 'WindowButtonDownFcn', @(varargin)flvideo_buttonfcn('down',varargin{:}),'WindowButtonUpFcn',@(varargin)flvideo_buttonfcn('up',varargin{:}),'WindowButtonMotionFcn',@(varargin)flvideo_buttonfcn('motion',varargin{:}));
         else
+            try selectspeed=get(data.handles_playbackspeed,'value'); end
             try, layout=get(data.handles_layout,'value'); end
             try, motionHighlight=get(data.handles_motionhighlight,'value'); end
             try, audioSignalSelect=get(data.handles_audiosignal,'value'); end
@@ -179,7 +181,7 @@ function FLvideo(videoFile)
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [490, 89, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'Position', [600, 89, 130, 20], ...
+        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [600, 89, 130, 20], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         uicontrol('Style', 'text', 'String', 'GUI layout', 'Position', [490, 66, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
@@ -191,21 +193,24 @@ function FLvideo(videoFile)
             'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         uicontrol('Style', 'text', 'String', 'Highlight Motion', 'Position', [490, 20, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'Position', [600, 20, 130, 20], ...
+        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'tooltip','Highlights in red areas in the video with high motion velocity (or acceleration when displaying motion acceleration)', 'Position', [600, 20, 130, 20], ...
             'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         % Bottom row: Selection and save controls
-        uicontrol('Style', 'pushbutton', 'String', 'Select Points', 'Position', [20, 20, 100, 40], ...
+        uicontrol('Style', 'pushbutton', 'String', 'Select Window', 'tooltip','<HTML>Select a window between two timepoints<br/>Alternatively, click-and-drag in any of the plot displays to select a window</HTML>', 'Position', [20, 20, 210, 40], 'foregroundcolor','b', ...
             'Callback', @(src, event) selectPoints(hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
 
-        data.handles_saveclipButton = uicontrol('Style', 'pushbutton', 'String', 'Save Clip', 'Position', [130, 20, 100, 40], ...
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_save.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,20,32,20,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
+        data.handles_saveclipButton = uicontrol('Style', 'pushbutton', 'tooltip', 'Save Clip with video within selected window', 'Position', [310, 20, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) saveClip(hFig), 'Parent', data.handles_buttonPanel, 'enable',isselected);
 
-        data.handles_playSelectionButton = uicontrol('Style', 'pushbutton', 'String', 'Play/Pause Selection', ...
-            'Position', [240, 20, 120, 40], 'Enable', isselected, ...
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_play.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
+        data.handles_playSelectionButton = uicontrol('Style', 'pushbutton', 'tooltip', 'Play/Pause video within selected window', 'cdata', temp, ...
+            'Position', [350, 20, 40, 40], 'Enable', isselected, ...
             'Callback', @(src, event) playSelection(hFig), 'Parent', data.handles_buttonPanel);
 
-        data.handles_zoom=uicontrol('Style', 'pushbutton', 'string', 'Zoom In/Out', 'value', 0, 'Position', [370, 20, 100, 40], ...
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_zoom.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,20,32,20,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
+        data.handles_zoom=uicontrol('Style', 'pushbutton', 'tooltip', 'Zoom In/Out of selected window', 'Position', [390, 20, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) zoomIn, 'Parent', data.handles_buttonPanel, 'enable',isselected);
         
         if NewData, % Displays video and audio data
@@ -271,8 +276,10 @@ function FLvideo(videoFile)
             %xlabel(data.handles_audioPanel, 'Time (s)');
             %ylabel(data.handles_audioPanel, 'Audio Signal Intensity');
             %title(data.handles_audioPanel, 'Audio Signal with Current Frame');
-            set(data.handles_audioPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1], 'xticklabel',[]);
-
+            set(data.handles_audioPanel, 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1], 'box','off');
+            if nplots==0, xlabel(data.handles_audioPanel, 'Time (s)');
+            else set(data.handles_audioPanel,'xticklabel',[]);
+            end
             data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'string', {'raw Audio Signal','MRI denoised Audio Signal'}, 'Value', audioSignalSelect, 'units','norm','Position', [0.35, 0.5, 0.3, 0.03], 'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', hFig);
 
             [data.handles_plotmeasure, data.handles_otherPanel1,data.handles_otherPlot1,data.handles_otherPointerLine1,data.handles_otherFrameLine1,data.handles_otherShading1,data.handles_otherPanel2,data.handles_otherPlot2,data.handles_otherPointerLine2,data.handles_otherFrameLine2,data.handles_otherShading2]=deal([]);
@@ -294,7 +301,7 @@ function FLvideo(videoFile)
                 if nplot==nplots, xlabel(data.handles_otherPanel1(nplot), 'Time (s)'); 
                 else set(data.handles_otherPanel1(nplot),'xticklabel',[]);
                 end
-                set(data.handles_otherPanel1(nplot), 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
+                set(data.handles_otherPanel1(nplot), 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1],'box','off');
 
                 % Create a dedicated axes for all other plots (for image displays)
                 data.handles_otherPanel2(nplot) = axes('Position', [1 nplot]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Parent', hFig);
@@ -309,7 +316,7 @@ function FLvideo(videoFile)
                 else set(data.handles_otherPanel2(nplot),'xticklabel',[]);
                 end
                 %ylabel(data.handles_otherPanel2, 'Frequency (Hz)'); % note: change later when adding more plots
-                set(data.handles_otherPanel2(nplot), 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1]);
+                set(data.handles_otherPanel2(nplot), 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1],'box','off');
 
                 data.handles_plotmeasure(nplot)=uicontrol('Style', 'popupmenu', 'string', {'Velocity of Movements', 'Acceleration of Movements', 'Audio Spectrogram', 'Audio Harmonic to Noise Ratio', 'Acoustic Energy'}, 'Value', plotMeasure(nplot), 'units','norm','Position', [1 nplot]*[0.35, 0.5, 0.3, .03; 0  -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(src, event) changePlotMeasure(src, event, hFig), 'Parent', hFig);
             end
@@ -354,6 +361,7 @@ function FLvideo(videoFile)
             data.videoFile = videoFile;
 
             % adds video name 
+            adjustPlaybackSpeed();
             changeAudioSignal();
             changeColormap();
             zoomIn(zoomin);
@@ -478,10 +486,10 @@ function FLvideo(videoFile)
         end
     end
 
-    function adjustPlaybackSpeed(slider, ~, hFig)
+    function adjustPlaybackSpeed(~, ~, hFig)
         speeds=[0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 5];
-        if data.isPlaying, slider.Value=find(speeds==data.playbackSpeed,1);
-        else data.playbackSpeed = speeds(slider.Value);
+        if data.isPlaying, set(data.handles_playbackspeed,'value',find(speeds==data.playbackSpeed,1));
+        else data.playbackSpeed = speeds(get(data.handles_playbackspeed,'value'));
         end
     end
 
