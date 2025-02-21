@@ -323,10 +323,10 @@ function FLvideo(videoFile)
             if isempty(zoomWindow), data.handles_audioShading = patch([0 0 0 0],[0 0 0 0],'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none'); 
             else data.handles_audioShading = patch(zoomWindow([1 1 2 2]),audioYLim([1 2 2 1]),'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');        
             end
-            data.handles_audioFrameText = text(0,0,'','color','r','horizontalalignment','left','verticalalignment','top'); set(data.handles_audioFrameText,{'string','position'},audioFrameText); 
-            data.handles_audioShadingText1 = text(0,0,'','color','b','horizontalalignment','right','verticalalignment','bottom'); set(data.handles_audioShadingText1,{'string','position'},audioShadingText1); 
-            data.handles_audioShadingText2 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','bottom'); set(data.handles_audioShadingText2,{'string','position'},audioShadingText2); 
-            data.handles_audioShadingText3 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','top'); set(data.handles_audioShadingText3,{'string','position'},audioShadingText3); 
+            data.handles_audioFrameText = text(0,0,'','color','r','horizontalalignment','left','verticalalignment','top','ButtonDownFcn',@copytoclipboard); set(data.handles_audioFrameText,{'string','position'},audioFrameText); 
+            data.handles_audioShadingText1 = text(0,0,'','color','b','horizontalalignment','right','verticalalignment','bottom','ButtonDownFcn',@copytoclipboard); set(data.handles_audioShadingText1,{'string','position'},audioShadingText1); 
+            data.handles_audioShadingText2 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','bottom','ButtonDownFcn',@copytoclipboard); set(data.handles_audioShadingText2,{'string','position'},audioShadingText2); 
+            data.handles_audioShadingText3 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','top','ButtonDownFcn',@copytoclipboard); set(data.handles_audioShadingText3,{'string','position'},audioShadingText3); 
             xlim(data.handles_audioPanel, [0 totalDuration]); % Set x-axis limits based on audio duration
             ylim(data.handles_audioPanel, audioYLim); % Apply y-limits for the audio plot
             %xlabel(data.handles_audioPanel, 'Time (s)');
@@ -937,9 +937,18 @@ function FLvideo(videoFile)
         end
     end
 
+    function copytoclipboard(varargin)
+        str=regexprep(get(gcbo,'string'),'^\s+|\s+$','');
+        clipboard('copy', str); %regexprep(get(gcbo,'string'),'[^\.\+\-\d]','')
+        fprintf('%s copied to clipboard\n',str);
+        data.skipbuttonup=true;
+    end
 
     function flvideo_buttonfcn(option,varargin)
         if ~isfield(data,'handles_audioPanel')||isempty(data.handles_audioPanel), return; end
+        if ~isfield(data,'buttondown_pos'), data.buttondown_pos=0; end
+        if ~isfield(data,'buttondown_time'), data.buttondown_time=0; end
+        if ~isfield(data,'buttondown_ispressed'), data.buttondown_ispressed=0; end
         p1=get(0,'pointerlocation');
         set(gcbf,'units','pixels');
         p2=get(gcbf,'position');
@@ -961,7 +970,8 @@ function FLvideo(videoFile)
             end
         end
         if strcmp(get(gcbf,'SelectionType'),'open'), set(gcbf,'selectiontype','normal'); if in_ref, zoomIn(false); end; return; end % double-click to zoom out
-        if in_ref, 
+        if data.buttondown_ispressed
+        elseif in_ref, 
             set(data.handles_audioPointerLine, 'xdata', [refTime, refTime, refTime, refTime], 'ydata', [data.audioYLim(1), data.audioYLim(1), data.audioYLim(2), data.audioYLim(2)]);
             if nplots>0
                 set(data.handles_otherPointerLine1, 'xdata', [refTime, refTime, refTime, refTime], 'ydata', [data.otherYLim(1), data.otherYLim(1), data.otherYLim(2), data.otherYLim(2)]);
@@ -975,18 +985,20 @@ function FLvideo(videoFile)
             end
         end
 
-        if ~isfield(data,'buttondown_pos'), data.buttondown_pos=0; end
-        if ~isfield(data,'buttondown_time'), data.buttondown_time=0; end
-        if ~isfield(data,'buttondown_ispressed'), data.buttondown_ispressed=0; end
         switch(option) % click-and-drag to select & zoom in
             case 'down',
                 if in_ref
                     data.buttondown_pos=p1(1);
                     data.buttondown_time=refTime;
                     data.buttondown_ispressed=1;
-                    thisFrame(refTime);
+                    %thisFrame(refTime);
                 end
             case 'up',
+                if isfield(data,'skipbuttonup')&&data.skipbuttonup, 
+                    data.buttondown_ispressed=0;
+                    data.skipbuttonup=false; 
+                    return
+                end
                 if data.buttondown_ispressed>1
                     data.buttondown_ispressed=0;
                     startTime = min(data.buttondown_time, refTime);
@@ -1004,6 +1016,9 @@ function FLvideo(videoFile)
                     if isfield(data, 'handles_saveclipButton') && isvalid(data.handles_saveclipButton), set(data.handles_saveclipButton, 'Enable', 'on'); end
                     if isfield(data, 'handles_zoom') && isvalid(data.handles_zoom), set(data.handles_zoom, 'Enable', 'on'); end
                     zoomIn(true);
+                elseif in_ref
+                    data.buttondown_ispressed=0;
+                    thisFrame(refTime);
                 else
                     data.buttondown_ispressed=0;
                 end
@@ -1012,8 +1027,6 @@ function FLvideo(videoFile)
                     data.buttondown_ispressed=2;
                     startTime = min(data.buttondown_time, refTime);
                     endTime = max(data.buttondown_time, refTime);
-                    %if isfield(data,'handles_audioLine1')&&isvalid(data.handles_audioLine1), delete(data.handles_audioLine1); end
-                    %if isfield(data,'handles_audioLine2')&&isvalid(data.handles_audioLine2), delete(data.handles_audioLine2); end
                     set(data.handles_audioShading, 'xdata', [startTime, endTime, endTime, startTime], 'ydata', [data.audioYLim(1), data.audioYLim(1), data.audioYLim(2), data.audioYLim(2)]);
                     set(data.handles_otherShading1, 'xdata', [startTime, endTime, endTime, startTime], 'ydata', [data.otherYLim(1), data.otherYLim(1), data.otherYLim(2), data.otherYLim(2)]);
                     set(data.handles_otherShading2, 'xdata', [startTime, endTime, endTime, startTime], 'ydata', [data.otherYLim(1), data.otherYLim(1), data.otherYLim(2), data.otherYLim(2)]);
@@ -1057,7 +1070,6 @@ end
 filteredAudio=y;
 fprintf('Noise supression: noise fundamental frequency %sHz\n',mat2str(audioFs/optimPeriod,6));
 end
-
 
 % note: files from FLvoice (2025/02/01 version)
 % consider integrating with FLvoice package in the future
