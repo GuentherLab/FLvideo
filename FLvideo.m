@@ -689,6 +689,7 @@ function FLvideo(videoFile)
 
         % Display the time difference between the selected points
         disp(['Time difference between selected points: ', num2str(endTime - startTime), ' seconds.']);
+        zoomIn(true);
     end
 
     function saveClip(hFig)
@@ -881,8 +882,11 @@ function FLvideo(videoFile)
 
     function loadNewVideo(hFig)
         % Prompt user for a new video file
-        [fileName, filePath] = uigetfile({ '*', 'All Files (*.*)'; '*.avi;*.mp4;*.mat', 'Video Files (*.avi, *.mp4; *.mat)'}, ...
-            'Select a Video File');
+        if isfield(data,'videoFile')&&~isempty(data.videoFile), 
+            [fileName, filePath] = uigetfile({ '*', 'All Files (*.*)'; '*.avi;*.mp4;*.mat', 'Video Files (*.avi, *.mp4; *.mat)'}, 'Select a Video File',fileparts(data.videoFile));
+        else
+            [fileName, filePath] = uigetfile({ '*', 'All Files (*.*)'; '*.avi;*.mp4;*.mat', 'Video Files (*.avi, *.mp4; *.mat)'}, 'Select a Video File');
+        end
         if fileName == 0
             disp('No video file selected.');
             return;
