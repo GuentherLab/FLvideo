@@ -42,6 +42,7 @@ function FLvideo(videoFile)
                     set(data.handles_otherFrameLine1, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
                     set(data.handles_otherFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
                     set(data.handles_audioFrameText, 'string', sprintf(' t = %.3f s',mean(timeAtCurrentFrame)), 'position', [timeAtCurrentFrame(end), data.audioYLim*[0;1]]);
+                    data.handles_audioFrameText_extent=[];
                     countidle=0;
                     drawnow;
                 else pause(0.001);
@@ -323,10 +324,10 @@ function FLvideo(videoFile)
             if isempty(zoomWindow), data.handles_audioShading = patch([0 0 0 0],[0 0 0 0],'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none'); 
             else data.handles_audioShading = patch(zoomWindow([1 1 2 2]),audioYLim([1 2 2 1]),'blue', 'FaceAlpha', 0.2, 'EdgeColor', 'none');        
             end
-            data.handles_audioFrameText = text(0,0,'','color','r','horizontalalignment','left','verticalalignment','top','ButtonDownFcn',@copytoclipboard); set(data.handles_audioFrameText,{'string','position'},audioFrameText); 
-            data.handles_audioShadingText1 = text(0,0,'','color','b','horizontalalignment','right','verticalalignment','bottom','ButtonDownFcn',@copytoclipboard); set(data.handles_audioShadingText1,{'string','position'},audioShadingText1); 
-            data.handles_audioShadingText2 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','bottom','ButtonDownFcn',@copytoclipboard); set(data.handles_audioShadingText2,{'string','position'},audioShadingText2); 
-            data.handles_audioShadingText3 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','top','ButtonDownFcn',@copytoclipboard); set(data.handles_audioShadingText3,{'string','position'},audioShadingText3); 
+            data.handles_audioFrameText = text(0,0,'','color','r','horizontalalignment','left','verticalalignment','top'); set(data.handles_audioFrameText,{'string','position'},audioFrameText); 
+            data.handles_audioShadingText1 = text(0,0,'','color','b','horizontalalignment','right','verticalalignment','bottom'); set(data.handles_audioShadingText1,{'string','position'},audioShadingText1); 
+            data.handles_audioShadingText2 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','bottom'); set(data.handles_audioShadingText2,{'string','position'},audioShadingText2); 
+            data.handles_audioShadingText3 = text(0,0,'','color','b','horizontalalignment','left','verticalalignment','top'); set(data.handles_audioShadingText3,{'string','position'},audioShadingText3); 
             xlim(data.handles_audioPanel, [0 totalDuration]); % Set x-axis limits based on audio duration
             ylim(data.handles_audioPanel, audioYLim); % Apply y-limits for the audio plot
             %xlabel(data.handles_audioPanel, 'Time (s)');
@@ -438,6 +439,7 @@ function FLvideo(videoFile)
                 set(data.handles_otherFrameLine1, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
                 set(data.handles_otherFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
                 set(data.handles_audioFrameText, 'string', sprintf(' t = %.3f s',mean(timeAtCurrentFrame)), 'position', [timeAtCurrentFrame(end), data.audioYLim*[0;1]]);
+                data.handles_audioFrameText_extent=[];
 
                 % Play the audio for the current frame
                 startSample = max(1,min(length(data.audioSignal)-1, 1+round((data.currentFrame-1)/data.FrameRate*data.SampleRate) ));
@@ -463,6 +465,7 @@ function FLvideo(videoFile)
                 set(data.handles_otherFrameLine1, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
                 set(data.handles_otherFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
                 set(data.handles_audioFrameText, 'string', sprintf(' t = %.3f s',mean(timeAtCurrentFrame)), 'position', [timeAtCurrentFrame(end), data.audioYLim*[0;1]]);
+                data.handles_audioFrameText_extent=[];
                 drawnow;
             end
         end
@@ -482,6 +485,7 @@ function FLvideo(videoFile)
             set(data.handles_otherFrameLine1, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
             set(data.handles_otherFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
             set(data.handles_audioFrameText, 'string', sprintf(' t = %.3f s',thisTime(1)), 'position', [timeAtCurrentFrame(end), data.audioYLim*[0;1]]);
+            data.handles_audioFrameText_extent=[];
             drawnow;
         end
     end
@@ -498,6 +502,7 @@ function FLvideo(videoFile)
             set(data.handles_otherFrameLine1, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
             set(data.handles_otherFrameLine2, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
             set(data.handles_audioFrameText, 'string', sprintf(' t = %.3f s',mean(timeAtCurrentFrame)),  'position', [timeAtCurrentFrame(end), data.audioYLim*[0;1]]);
+            data.handles_audioFrameText_extent=[];
             zoomIn(false);
             drawnow;
         end
@@ -522,6 +527,10 @@ function FLvideo(videoFile)
             case 0, % zoom out
                 xlim([data.handles_audioPanel, data.handles_otherPanel1, data.handles_otherPanel2], [0 data.totalDuration]); 
         end
+        data.handles_audioFrameText_extent=[];
+        data.handles_audioShadingText1_extent=[];
+        data.handles_audioShadingText2_extent=[];
+        data.handles_audioShadingText3_extent=[];
     end
 
     function changeMotionHighlight(~, ~, hFig);
@@ -700,6 +709,9 @@ function FLvideo(videoFile)
         set(data.handles_audioShadingText1, 'string', sprintf('t = %.3f s ',startTime), 'position', [startTime, data.audioYLim*[1;0]]);
         set(data.handles_audioShadingText2, 'string', sprintf(' t = %.3f s',endTime), 'position', [endTime, data.audioYLim*[1;0]]);
         set(data.handles_audioShadingText3, 'string', sprintf('∆t = %d ms',round(1000*(endTime-startTime))), 'position', [endTime, data.audioYLim*[1;0]]);
+        data.handles_audioShadingText1_extent=[];
+        data.handles_audioShadingText2_extent=[];
+        data.handles_audioShadingText3_extent=[];
         delete(handles_audioLine1);
 
         % enable selection-related buttons
@@ -937,11 +949,11 @@ function FLvideo(videoFile)
         end
     end
 
-    function copytoclipboard(varargin)
-        str=regexprep(get(gcbo,'string'),'^\s+|\s+$','');
-        clipboard('copy', str); %regexprep(get(gcbo,'string'),'[^\.\+\-\d]','')
+    function copytoclipboard(handle)
+        if nargin<1||isempty(handle), handle=gcbo; end
+        str=regexprep(get(handle,'string'),'^\s+|\s+$','');
+        clipboard('copy', str);
         fprintf('%s copied to clipboard\n',str);
-        data.skipbuttonup=true;
     end
 
     function flvideo_buttonfcn(option,varargin)
@@ -958,6 +970,8 @@ function FLvideo(videoFile)
         pos=(p1-p2(1:2))./p2(3:4);
         pos_ref=get(data.handles_audioPanel,'Position');
         pos_ref=(pos-pos_ref(1:2))./pos_ref(3:4);
+        xlim_audio=get(data.handles_audioPanel,'xlim');
+        pos_audio=[xlim_audio(1) data.audioYLim(1)]+pos_ref.*[xlim_audio(2)-xlim_audio(1),data.audioYLim(2)-data.audioYLim(1)];
         in_ref=all(pos_ref>=0 & pos_ref<=1);
         refTime=get(data.handles_audioPanel,'xlim')*[1-pos_ref(1);pos_ref(1)];
         nplots=numel(data.handles_plotmeasure);
@@ -970,8 +984,17 @@ function FLvideo(videoFile)
             end
         end
         if strcmp(get(gcbf,'SelectionType'),'open'), set(gcbf,'selectiontype','normal'); if in_ref, zoomIn(false); end; return; end % double-click to zoom out
+        in_text=[]; 
+        if ~isfield(data,'handles_audioFrameText_extent')||isempty(data.handles_audioFrameText_extent), data.handles_audioFrameText_extent=get(data.handles_audioFrameText,'extent'); end % highlights text when hovering over it
+        if ~isfield(data,'handles_audioShadingText1_extent')||isempty(data.handles_audioShadingText1_extent), data.handles_audioShadingText1_extent=get(data.handles_audioShadingText1,'extent'); end
+        if ~isfield(data,'handles_audioShadingText2_extent')||isempty(data.handles_audioShadingText2_extent), data.handles_audioShadingText2_extent=get(data.handles_audioShadingText2,'extent'); end
+        if ~isfield(data,'handles_audioShadingText3_extent')||isempty(data.handles_audioShadingText3_extent), data.handles_audioShadingText3_extent=get(data.handles_audioShadingText3,'extent'); end
+        if all(pos_audio(1:2)>data.handles_audioFrameText_extent(1:2) & pos_audio(1:2)-data.handles_audioFrameText_extent(1:2)<data.handles_audioFrameText_extent(3:4)),            in_ref=false; in_text=data.handles_audioFrameText; set(data.handles_audioFrameText,'backgroundcolor',[.85 .85 .85]);     else set(data.handles_audioFrameText,'backgroundcolor','none'); end
+        if all(pos_audio(1:2)>data.handles_audioShadingText1_extent(1:2) & pos_audio(1:2)-data.handles_audioShadingText1_extent(1:2)<data.handles_audioShadingText1_extent(3:4)),   in_ref=false; in_text=data.handles_audioShadingText1; set(data.handles_audioShadingText1,'backgroundcolor',[.85 .85 .85]);  else set(data.handles_audioShadingText1,'backgroundcolor','none'); end
+        if all(pos_audio(1:2)>data.handles_audioShadingText2_extent(1:2) & pos_audio(1:2)-data.handles_audioShadingText2_extent(1:2)<data.handles_audioShadingText2_extent(3:4)),   in_ref=false; in_text=data.handles_audioShadingText2; set(data.handles_audioShadingText2,'backgroundcolor',[.85 .85 .85]);  else set(data.handles_audioShadingText2,'backgroundcolor','none'); end
+        if all(pos_audio(1:2)>data.handles_audioShadingText3_extent(1:2) & pos_audio(1:2)-data.handles_audioShadingText3_extent(1:2)<data.handles_audioShadingText3_extent(3:4)),   in_ref=false; in_text=data.handles_audioShadingText2; set(data.handles_audioShadingText3,'backgroundcolor',[.85 .85 .85]);  else set(data.handles_audioShadingText3,'backgroundcolor','none'); end
         if data.buttondown_ispressed
-        elseif in_ref, 
+        elseif in_ref, % show timepoint line
             set(data.handles_audioPointerLine, 'xdata', [refTime, refTime, refTime, refTime], 'ydata', [data.audioYLim(1), data.audioYLim(1), data.audioYLim(2), data.audioYLim(2)]);
             if nplots>0
                 set(data.handles_otherPointerLine1, 'xdata', [refTime, refTime, refTime, refTime], 'ydata', [data.otherYLim(1), data.otherYLim(1), data.otherYLim(2), data.otherYLim(2)]);
@@ -987,19 +1010,13 @@ function FLvideo(videoFile)
 
         switch(option) % click-and-drag to select & zoom in
             case 'down',
-                if in_ref
+                if in_ref % started selecting window or selecting timepoint
                     data.buttondown_pos=p1(1);
                     data.buttondown_time=refTime;
                     data.buttondown_ispressed=1;
-                    %thisFrame(refTime);
                 end
             case 'up',
-                if isfield(data,'skipbuttonup')&&data.skipbuttonup, 
-                    data.buttondown_ispressed=0;
-                    data.skipbuttonup=false; 
-                    return
-                end
-                if data.buttondown_ispressed>1
+                if data.buttondown_ispressed>1 % finished selecting window
                     data.buttondown_ispressed=0;
                     startTime = min(data.buttondown_time, refTime);
                     endTime = max(data.buttondown_time, refTime);
@@ -1010,20 +1027,26 @@ function FLvideo(videoFile)
                     set(data.handles_audioShadingText1, 'string', sprintf('t = %.3f s ',startTime), 'position', [startTime, data.audioYLim*[1;0]]);
                     set(data.handles_audioShadingText2, 'string', sprintf(' t = %.3f s',endTime), 'position', [endTime, data.audioYLim*[1;0]]);
                     set(data.handles_audioShadingText3, 'string', sprintf('∆t = %d ms',round(1000*(endTime-startTime))), 'position', [endTime, data.audioYLim*[1;0]]);
+                    data.handles_audioShadingText1_extent=[];
+                    data.handles_audioShadingText2_extent=[];
+                    data.handles_audioShadingText3_extent=[];
                     data.zoomWindow = [startTime, endTime];
                     % enable selection-related buttons
                     if isfield(data, 'handles_playSelectionButton') && isvalid(data.handles_playSelectionButton), set(data.handles_playSelectionButton, 'Enable', 'on'); end
                     if isfield(data, 'handles_saveclipButton') && isvalid(data.handles_saveclipButton), set(data.handles_saveclipButton, 'Enable', 'on'); end
                     if isfield(data, 'handles_zoom') && isvalid(data.handles_zoom), set(data.handles_zoom, 'Enable', 'on'); end
                     zoomIn(true);
-                elseif in_ref
+                elseif in_ref % selected timepoint
                     data.buttondown_ispressed=0;
                     thisFrame(refTime);
-                else
+                elseif ~isempty(in_text) % clicked on text
+                    data.buttondown_ispressed=0;
+                    copytoclipboard(in_text);
+                else % clicked elsewhere
                     data.buttondown_ispressed=0;
                 end
             case 'motion'
-                if in_ref && data.buttondown_ispressed && (data.buttondown_ispressed>1 || abs(p1(1)-data.buttondown_pos)>16),
+                if in_ref && data.buttondown_ispressed && (data.buttondown_ispressed>1 || abs(p1(1)-data.buttondown_pos)>16), % in the process of selecting window (16pixels minimum displacement)
                     data.buttondown_ispressed=2;
                     startTime = min(data.buttondown_time, refTime);
                     endTime = max(data.buttondown_time, refTime);
@@ -1033,6 +1056,9 @@ function FLvideo(videoFile)
                     set(data.handles_audioShadingText1, 'string', sprintf('t = %.3f s ',startTime), 'position', [startTime, data.audioYLim*[1;0]]);
                     set(data.handles_audioShadingText2, 'string', sprintf(' t = %.3f s',endTime), 'position', [endTime, data.audioYLim*[1;0]]);
                     set(data.handles_audioShadingText3, 'string', sprintf('∆t = %d ms',round(1000*(endTime-startTime))), 'position', [endTime, data.audioYLim*[1;0]]);
+                    data.handles_audioShadingText1_extent=[];
+                    data.handles_audioShadingText2_extent=[];
+                    data.handles_audioShadingText3_extent=[];
                     currentFrame = max(1, min(data.numFrames, ceil(refTime * data.FrameRate)));
                     currentFrameIndex = round(currentFrame);
                     frame = getframeCache(currentFrameIndex);
