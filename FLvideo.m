@@ -453,7 +453,7 @@ function FLvideo(videoFile)
             data.colormap=parula(256);
             data.videodisplay=videodisplay;
             data.smoothing=smoothingselect;
-            data.maxsmoothing=0.100; % maximum smoothing (in seconds, hanning window length)
+            data.maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
             data.XLim = XLim;
             data.audioYLim = audioYLim;
             data.otherYLim = otherYLim;
@@ -469,6 +469,7 @@ function FLvideo(videoFile)
             changeColormap();
             zoomIn(data.XLim);
             changeLayout();
+            set(data.handles_hFig,'windowstyle','modal'); drawnow nocallbacks; set(data.handles_hFig,'windowstyle','normal'); % note: fixes Matlab issue loosing focus on figure handle
         else
             data.handles_videoPanel=[];
             data.handles_audioPanel=[];
@@ -1185,17 +1186,19 @@ function FLvideo(videoFile)
         mdf=get(data.handles_hFig,'currentmodifier');
         data.keydown_isctrlpressed=ismember('control',mdf); % CTRL-click to zoom in/out
         data.keydown_isshiftpressed=ismember('shift',mdf); % SHIFT-click to snap-to-peak
-        switch(option)
-            case 'press'
-                if data.keydown_isctrlpressed, 
-                    set(data.handles_audioCurrentPointText, 'string', ' CLICK&DRAG TO ZOOM');
-                elseif data.keydown_isshiftpressed, 
-                    set(data.handles_audioCurrentPointText, 'string', ' CLICK TO SELECT LOCAL MAXIMUM');
-                end
-            case 'release'
-                set(data.handles_audioCurrentPointText, 'string', '')
+        if isfield(data,'handles_audioCurrentPointText')
+            switch(option)
+                case 'press'
+                    if data.keydown_isctrlpressed,
+                        set(data.handles_audioCurrentPointText, 'string', ' CLICK&DRAG TO ZOOM');
+                    elseif data.keydown_isshiftpressed,
+                        set(data.handles_audioCurrentPointText, 'string', ' CLICK TO SELECT LOCAL MAXIMUM');
+                    end
+                case 'release'
+                    set(data.handles_audioCurrentPointText, 'string', '')
+            end
+            flvideo_buttonfcn('motion');
         end
-        flvideo_buttonfcn('motion');
     end
 
     function flvideo_buttonfcn(option,varargin)
