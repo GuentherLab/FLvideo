@@ -585,8 +585,8 @@ function FLvideo(videoFile)
             frame = getframeCache(data.currentFrame);
             set(data.hVideo, 'CData', frame);
             str=sprintf('t = %.3f s',thisTime(1));
-            clipboard('copy', str);
-            fprintf('%s copied to clipboard\n',str);
+            clipboard('copy', sprintf('%.3f',thisTime(1)));
+            fprintf('%s (copied to clipboard)\n',str);
             timeAtCurrentFrame = (data.currentFrame+[-1 -1 0 0]) / data.FrameRate;
             set(data.handles_audioSelectedVideoframe, 'XData', timeAtCurrentFrame, 'YData', data.audioYLim([1 2 2 1]));
             set(data.handles_otherSelecetedVideoframe1, 'XData', timeAtCurrentFrame, 'YData', data.otherYLim([1 2 2 1]));
