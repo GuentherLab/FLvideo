@@ -67,8 +67,9 @@ function FLvideo(videoFile)
         selectspeed=5;      % default playback speed: 1x
         currentFrame=1;     % default videoframe displayed: 1
         layout=1;           % default layout: standard
-        motionHighlight=1;  % default motion highlight: off
+        motionHighlight=2;  % default motion highlight: on
         cmapselect=3;       % default colormap: parula
+        maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
         smoothing={0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
         threshold={.20 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
         videodisplay=2;     % default video-frame behavior: current frame follows mouse motion
@@ -251,6 +252,8 @@ function FLvideo(videoFile)
         
         smoothingnames={};
         for nsmoothing=1:numel(smoothing)
+            data.handles_smoothingEdit(nsmoothing)=uicontrol('Style', 'edit', 'string', mat2str(round(1000*maxsmoothing*smoothing{nsmoothing})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [730, 18, 40, 20], ...
+            'Callback', @(src, event) changeSmoothing(nsmoothing,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
             data.handles_smoothing(nsmoothing)=uicontrol('Style', 'slider', 'Value', smoothing{nsmoothing}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [550, 18, 180, 20], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing), 'Parent', data.handles_buttonPanel, 'visible','off');
             try, addlistener(data.handles_smoothing(nsmoothing), 'ContinuousValueChange',@(varargin)changeSmoothing(nsmoothing)); end
@@ -259,6 +262,8 @@ function FLvideo(videoFile)
         
         thresholdnames={};
         for nthreshold=1:numel(threshold)
+            data.handles_thresholdEdit(nthreshold)=uicontrol('Style', 'edit', 'string', mat2str(round(100*threshold{nthreshold})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [730, 18, 40, 20], ...
+            'Callback', @(src, event) changeThreshold(nthreshold,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
             data.handles_threshold(nthreshold)=uicontrol('Style', 'slider', 'Value', threshold{nthreshold}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [550, 18, 180, 20], ...
             'Callback', @(src, event) changeThreshold(nthreshold), 'Parent', data.handles_buttonPanel, 'visible','off');
             try, addlistener(data.handles_threshold(nthreshold), 'ContinuousValueChange',@(varargin)changeThreshold(nthreshold)); end
@@ -273,7 +278,7 @@ function FLvideo(videoFile)
         
         uicontrol('Style', 'text', 'String', 'Settings', 'Position', [440, 40, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
         data.handles_settings=uicontrol('Style', 'popupmenu', 'string', {'          ', 'GUI Layout', 'Video display', 'Spectrogram color', 'Highlight motion in video', smoothingnames{:}, thresholdnames{:}}, 'Value', 1, 'Position', [550, 40, 180, 20], ...
-            'Callback', @changeGuiOptions, 'Parent', data.handles_buttonPanel, 'userdata',[data.handles_layout, data.handles_videodisplay, data.handles_colormap, data.handles_motionhighlight, data.handles_smoothing, data.handles_threshold]);
+            'Callback', @changeGuiOptions, 'Parent', data.handles_buttonPanel, 'userdata',[{data.handles_layout}, {data.handles_videodisplay}, {data.handles_colormap}, {data.handles_motionhighlight}, num2cell([data.handles_smoothing; data.handles_smoothingEdit],1), num2cell([data.handles_threshold; data.handles_thresholdEdit],1)]);
         
         % Bottom row: Selection and save controls
         uicontrol('Style', 'pushbutton', 'String', 'Select Window', 'tooltip','<HTML>Select a window between two timepoints<br/>Alternatively, click-and-drag in any of the plot displays to select a window</HTML>', 'Position', [20, 20, 210, 40], 'foregroundcolor','b', ...
@@ -469,7 +474,7 @@ function FLvideo(videoFile)
             data.videodisplay=videodisplay;
             data.smoothing=smoothing;
             data.threshold=threshold;
-            data.maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
+            data.maxsmoothing=maxsmoothing;
             data.XLim = XLim;
             data.audioYLim = audioYLim;
             data.otherYLim = otherYLim;
@@ -686,14 +691,14 @@ function FLvideo(videoFile)
         i1=get(gcbo,'value')-1;         
         % makes associated menu visible
         val=get(gcbo,'userdata'); 
-        set(val,'visible','off'); 
+        for n=1:numel(val), set(val{n},'visible','off'); end 
         if i1, 
-            set(val(i1),'visible','on'); 
+            set(val{i1},'visible','on'); 
             % menu-specific options
             optionNames=get(gcbo,'string');
             switch(optionNames{i1+1}),
                 case 'Highlight motion in video' % switches off/on Motion highlight value
-                    set(val(i1),'value',1+mod(get(val(i1),'value'),numel(get(val(i1),'string'))));
+                    set(val{i1},'value',1+mod(get(val{i1},'value'),numel(get(val{i1},'string'))));
                     changeMotionHighlight();
             end
         end
@@ -728,8 +733,17 @@ function FLvideo(videoFile)
         if isfield(data,'globalMotionVel'), changePlotMeasure(); end
     end
 
-    function changeSmoothing(nsmoothing)
-        data.smoothing{nsmoothing}=get(data.handles_smoothing(nsmoothing),'value');
+    function changeSmoothing(nsmoothing,option)
+        if nargin>1&&isequal(option,'edit')
+            value=str2double(get(data.handles_smoothingEdit(nsmoothing),'string'))/1000/data.maxsmoothing;
+            if isempty(value), value=data.smoothing{nsmoothing}; end
+            data.smoothing{nsmoothing}=value;
+            set(data.handles_smoothing(nsmoothing),'value',value);
+        else
+            value=get(data.handles_smoothing(nsmoothing),'value');
+            data.smoothing{nsmoothing}=round(1000*data.maxsmoothing*value)/1000/data.maxsmoothing;
+            set(data.handles_smoothingEdit(nsmoothing),'string',mat2str(round(1000*data.maxsmoothing*data.smoothing{nsmoothing}))); 
+        end
         switch(data.allPlotMeasures{nsmoothing})
             case 'Velocity of Movements'
                 data.globalMotionVel_smoothed=[];
@@ -752,8 +766,17 @@ function FLvideo(videoFile)
         end
     end
 
-    function changeThreshold(nthreshold)
-        data.threshold{nthreshold}=get(data.handles_threshold(nthreshold),'value');
+    function changeThreshold(nthreshold,option)
+        if nargin>1&&isequal(option,'edit')
+            value=str2double(get(data.handles_thresholdEdit(nthreshold),'string'))/100;
+            if isempty(value), value=data.threshold{nthreshold}; end
+            data.threshold{nthreshold}=value;
+            set(data.handles_threshold(nthreshold),'value',value);
+        else
+            value=get(data.handles_threshold(nthreshold),'value');
+            data.threshold{nthreshold}=round(100*value)/100;
+            set(data.handles_thresholdEdit(nthreshold),'string',mat2str(round(100*value))); 
+        end
         switch(data.allPlotMeasures{nthreshold})
             case 'Velocity of Movements'
                 data.globalMotionVel_thresholded=[];
