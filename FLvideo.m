@@ -1261,7 +1261,6 @@ function FLvideo(videoFile)
         fprintf('%s copied to clipboard\n',str);
     end
 
-
     function refTime=flvideo_findlocalmaximum(in_ref,refTime)
         if in_ref==1, xdata=get(data.handles_audioPlot,{'xdata','ydata'});
         else xdata=get(data.handles_otherPlot1(in_ref-1),{'xdata','ydata'});
@@ -1273,20 +1272,46 @@ function FLvideo(videoFile)
         end
     end
 
-    function flvideo_keyfcn(option,varargin)
-        mdf=get(data.handles_hFig,'currentmodifier');
-        data.keydown_isctrlpressed=ismember('control',mdf); % CTRL-click to zoom in/out
-        data.keydown_isshiftpressed=ismember('shift',mdf); % SHIFT-click to snap-to-peak
-        data.keydown_isaltpressed=ismember('alt',mdf); % ALT-click to snap-to-boundary
+    function refTime = flvideo_findpeakstart(in_ref, refTime)
+        if in_ref == 1
+            xdata = get(data.handles_audioPlot, {'xdata', 'ydata'});
+        else
+            xdata = get(data.handles_otherPlot1(in_ref - 1), {'xdata', 'ydata'});
+        end
+        x = xdata{1};
+        y = xdata{2};
+    
+        if numel(y) >= 3
+            idxCandidates = 1 + find( y(2:end-1) < y(1:end-2) & y(2:end-1) <= y(3:end) );
+        else
+            idxCandidates = [];
+        end
+    
+        if ~isempty(idxCandidates)
+            [~, k] = min(abs(x(idxCandidates) - refTime));
+            refTime = x(idxCandidates(k));
+        end
+    end
+
+    function flvideo_keyfcn(option, varargin)
+        % Get current modifier keys' states
+        mdf = get(data.handles_hFig, 'currentmodifier');
+        data.keydown_isctrlpressed = ismember('control', mdf); % CTRL-click to zoom in/out
+        data.keydown_isshiftpressed = ismember('shift', mdf);  % SHIFT-click to snap-to-peak
+        data.keydown_isaltpressed = ismember('alt', mdf);      % ALT-click to snap-to-boundary
+    
+        % Update GUI text instructions based on key press state
         if isfield(data,'handles_audioCurrentPointText')
-            switch(option)
+            switch option
                 case 'press'
-                    if data.keydown_isctrlpressed,
-                        set(data.handles_audioCurrentPointText, 'string', ' CLICK&DRAG TO ZOOM');
-                    elseif data.keydown_isshiftpressed,
-                        set(data.handles_audioCurrentPointText, 'string', ' CLICK TO SELECT CLOSEST PEAK');
-                    elseif data.keydown_isaltpressed,
-                        set(data.handles_audioCurrentPointText, 'string', ' CLICK TO SELECT CLOSEST BOUNDARY');
+                    if data.keydown_isctrlpressed && data.keydown_isshiftpressed
+                        set(data.handles_audioCurrentPointText, 'string', ' CTRL+SHIFT CLICK TO SELECT PEAK ONSET');
+                    elseif data.keydown_isctrlpressed
+                        set(data.handles_audioCurrentPointText, 'string', ' CTRL CLICK TO ZOOM');
+                    elseif data.keydown_isshiftpressed
+                        set(data.handles_audioCurrentPointText, 'string', ' SHIFT CLICK TO SELECT CLOSEST PEAK');
+                    elseif data.keydown_isaltpressed
+                        set(data.handles_audioCurrentPointText, 'string', ' ALT CLICK TO SELECT CLOSEST BOUNDARY');
                     end
                 case 'release'
                     set(data.handles_audioCurrentPointText, 'string', '')
@@ -1354,8 +1379,12 @@ function FLvideo(videoFile)
         if all(pos_audio(1:2)>data.handles_audioSelectedWindowText3_extent(1:2) & pos_audio(1:2)-data.handles_audioSelectedWindowText3_extent(1:2)<data.handles_audioSelectedWindowText3_extent(3:4)),   in_text=data.handles_audioSelectedWindowText3; set(data.handles_audioSelectedWindowText3,'backgroundcolor',[.85 .85 .85]);  else set(data.handles_audioSelectedWindowText3,'backgroundcolor','none'); end
 
         if in_ref % when mouse is on any plot
-            if data.keydown_isshiftpressed, % snap-to-peak
-                refTime=flvideo_findlocalmaximum(in_ref,refTime);
+            if data.keydown_isctrlpressed && data.keydown_isshiftpressed
+                % Ctrl+Shift click Snap to peak onset
+                refTime = flvideo_findpeakstart(in_ref, refTime);
+            elseif data.keydown_isshiftpressed
+                % Shift click Snap to peak max
+                refTime = flvideo_findlocalmaximum(in_ref, refTime);
             elseif data.keydown_isaltpressed, % snap-to-boundary
                 if in_ref==1&&~isempty(in_interval)
                     if pos_audio(1)-data.textgridLabels(data.textgridTier).intervals(1,in_interval) < data.textgridLabels(data.textgridTier).intervals(2,in_interval)-pos_audio(1), refTime=data.textgridLabels(data.textgridTier).intervals(1,in_interval);
@@ -1371,6 +1400,7 @@ function FLvideo(videoFile)
             set(data.handles_audioCurrentPoint, 'xdata', [refTime, refTime, refTime, refTime], 'ydata', data.audioYLim([1 1 2 2]));
             if data.buttondown_selectingpoints==1, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLICK TO SELECT FIRST POINT',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
             elseif data.buttondown_selectingpoints==2, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLICK TO SELECT SECOND POINT',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
+            elseif data.keydown_isctrlpressed && data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s ONSET PEAK (CTRL+SHIFT)', refTime), 'position', [refTime, data.audioYLim * [1; 0]]);
             elseif data.keydown_isctrlpressed, set(data.handles_audioCurrentPointText, 'string', ' CLICK&DRAG TO ZOOM', 'position', [refTime, data.audioYLim*[1;0]]);
             elseif data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST PEAK',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
             elseif data.keydown_isaltpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST BOUNDARY',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
@@ -1401,7 +1431,10 @@ function FLvideo(videoFile)
                     data.buttondown_pos=p1(1);
                     %mdf=get(data.handles_hFig,'currentmodifier');
                     %if isequal(mdf,{'control'})||data.keydown_isctrlpressed % CTRL-click to zoom in/out
-                    if data.keydown_isctrlpressed % CTRL-click to zoom in/out
+                    if data.keydown_isctrlpressed && data.keydown_isshiftpressed
+                        data.buttondown_ispressed = 1;
+                        data.buttondown_info = refTime;
+                    elseif data.keydown_isctrlpressed % CTRL-click to zoom in/out
                         data.buttondown_isctrlpressed=1;
                         data.buttondown_info=[max(0,2*data.XLim(1)-refTime) min(data.totalDuration,2*data.XLim(2)-refTime(1)); data.XLim; refTime-.001 refTime+.001]; 
                     elseif data.buttondown_selectingpoints==1
@@ -1464,10 +1497,17 @@ function FLvideo(videoFile)
                     zoomIn(true,true);
                 elseif in_ref % selected timepoint
                     data.buttondown_ispressed=0;
-                    if data.buttondown_isshiftpressed>0 % snap-to-peak
-                        refTime=flvideo_findlocalmaximum(in_ref,refTime);
-                        data.buttondown_isshiftpressed=0;
+                    if data.keydown_isctrlpressed && data.keydown_isshiftpressed
+                        % Ctrl+Shift => snap to nearest local MIN (peak start)
+                        refTime = flvideo_findpeakstart(in_ref, refTime);
+                    elseif data.keydown_isshiftpressed
+                        % Shift => snap to nearest local MAX
+                        refTime = flvideo_findlocalmaximum(in_ref, refTime);
+                    else
+                        % No snap modifiers => keep refTime as-is
                     end
+                    clipboard('copy', sprintf('%.6f', refTime));
+                    fprintf('t = %.6f s copied to clipboard\n', refTime);
                     thisFrame(refTime);
                 else % clicked elsewhere
                     data.buttondown_ispressed=0;
