@@ -1273,6 +1273,7 @@ function FLvideo(videoFile)
     end
 
     function refTime = flvideo_findpeakstart(in_ref, refTime)
+        % Fetch x and y data depending on the input reference
         if in_ref == 1
             xdata = get(data.handles_audioPlot, {'xdata', 'ydata'});
         else
@@ -1281,16 +1282,58 @@ function FLvideo(videoFile)
         x = xdata{1};
         y = xdata{2};
     
-        if numel(y) >= 3
-            idxCandidates = 1 + find( y(2:end-1) < y(1:end-2) & y(2:end-1) <= y(3:end) );
-        else
-            idxCandidates = [];
+        if numel(y) < 3
+            % Not enough points to calculate derivative
+            return
         end
     
-        if ~isempty(idxCandidates)
-            [~, k] = min(abs(x(idxCandidates) - refTime));
-            refTime = x(idxCandidates(k));
+        % --- Compute velocity (first derivative)
+        dx = diff(x);
+        dy = diff(y);
+    
+        % Avoid division by zero if any duplicate x
+        dx(dx == 0) = eps;
+    
+        velocity = dy ./ dx;
+    
+        % Midpoints of x for aligning velocity
+        mid_x = (x(1:end-1) + x(2:end)) / 2;
+    
+        % --- Define a search window around refTime
+        tolerance = 0.10; % seconds; adjust as needed / match your highlight width
+        candidate_inds = find(abs(mid_x - refTime) <= tolerance);
+    
+        if isempty(candidate_inds)
+            % If no candidates near refTime, fall back to whole range
+            candidate_inds = 1:length(velocity);
         end
+    
+        % Only consider positive-going slopes (onset)
+        pos_inds = candidate_inds(velocity(candidate_inds) > 0);
+    
+        if isempty(pos_inds)
+            % Nothing positive to work with; keep original refTime
+            return
+        end
+    
+        % --- Find peak velocity, then walk back to "onset"
+        % 1) index of maximum positive velocity within the window
+        [~, idx_rel] = max(velocity(pos_inds));
+        peak_idx = pos_inds(idx_rel);
+    
+        % 2) define a fraction of the peak as the onset threshold
+        frac = 0.3;  % 30% of max; tweak (0.2–0.5) depending on how early you want it
+        v_peak = velocity(peak_idx);
+        v_thresh = frac * v_peak;
+    
+        % 3) walk backwards from peak until velocity drops below threshold
+        onset_idx = peak_idx;
+        while onset_idx > 1 && velocity(onset_idx-1) > v_thresh
+            onset_idx = onset_idx - 1;
+        end
+    
+        % Update refTime to this "start-of-ramp" point
+        refTime = mid_x(onset_idx);
     end
 
     function flvideo_keyfcn(option, varargin)
