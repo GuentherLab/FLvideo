@@ -1261,7 +1261,7 @@ function FLvideo(videoFile)
         fprintf('%s copied to clipboard\n',str);
     end
 
-    function refTime=flvideo_findlocalmaximum(in_ref,refTime)
+    function refTime=flvideo_findvelocitypcenter(in_ref,refTime) % Local max function (ALT)
         if in_ref==1, xdata=get(data.handles_audioPlot,{'xdata','ydata'});
         else xdata=get(data.handles_otherPlot1(in_ref-1),{'xdata','ydata'});
         end
@@ -1272,8 +1272,127 @@ function FLvideo(videoFile)
         end
     end
 
-    function refTime = flvideo_findpeakstart(in_ref, refTime)
-        % Fetch x and y data depending on the input reference
+    function refTime = flvideo_findacousticpcenter(in_ref, refTime)
+    % Acoustic P-center based on:
+    %   1) Smoothed energy envelope for robust peak detection
+    %   2) Snap to nearest peak in time
+    %   3) Energy-weighted centroid between the previous local minimum
+    %      ("valley") and the peak
+    % → P-center always on rising side, never on the back side.
+    
+        % ---- 1) Get data from GUI ----
+        if in_ref == 1
+            xdata = get(data.handles_audioPlot, {'xdata','ydata'});
+        else
+            xdata = get(data.handles_otherPlot1(in_ref-1), {'xdata','ydata'});
+        end
+    
+        t = xdata{1}(:);
+        y = xdata{2}(:);
+    
+        if numel(t) < 10 || numel(y) < 10 || numel(t) ~= numel(y)
+            return;
+        end
+    
+        % ---- 2) Smoothed envelope (for structure, not timing) ----
+        dt = mean(diff(t));
+        if ~isfinite(dt) || dt <= 0
+            return;
+        end
+    
+        winSamples = max(3, round(0.005 / dt));  % ~5 ms window
+        if mod(winSamples, 2) == 0
+            winSamples = winSamples + 1;
+        end
+    
+        y_s = smoothdata(y, 'movmean', winSamples);
+    
+        % ---- 3) Peak detection on smoothed envelope ----
+        if max(y_s) <= 0
+            return;
+        end
+    
+        minProm = 0.03 * max(y_s);   % 3% prominence
+        minDist = 0.025;             % 25 ms peak spacing
+    
+        [pkVals, pkTimes] = findpeaks(y_s, t, ...
+            'MinPeakProminence', minProm, ...
+            'MinPeakDistance',  minDist);
+    
+        if isempty(pkTimes)
+            return;
+        end
+    
+        % Convert to indices on t / y
+        idxPeaks = arrayfun(@(tt) find(t >= tt, 1, 'first'), pkTimes);
+    
+        % ---- 4) Snap to nearest peak in time ----
+        dists = abs(pkTimes - refTime);
+        [minD, jMin] = min(dists);
+    
+        snapRadius = 0.06;   % 60 ms snap radius
+        if isempty(minD) || minD > snapRadius
+            % No peak close enough: don't move refTime
+            return;
+        end
+    
+        peakIdx = idxPeaks(jMin);
+        tPeak   = t(peakIdx);
+        yPeak   = y_s(peakIdx);
+    
+        % ---- 5) Find previous valley (local minimum) before this peak ----
+        % Local minima on smoothed envelope
+        idxMins = 1 + find( ...
+            y_s(2:end-1) <= y_s(1:end-2) & ...
+            y_s(2:end-1) <  y_s(3:end) );
+    
+        % Keep only minima that occur before the chosen peak
+        idxMins = idxMins(idxMins < peakIdx);
+    
+        if ~isempty(idxMins)
+            % Last minimum before the peak
+            valleyIdx = idxMins(end);
+    
+            % If valley is *too* far (e.g. >120 ms), clamp window length
+            maxBack = 0.12;  % 120 ms
+            if (tPeak - t(valleyIdx)) > maxBack
+                tStart = tPeak - maxBack;
+                valleyIdx = find(t >= tStart, 1, 'first');
+            end
+        else
+            % No clear minimum: just go back fixed window
+            tStart = tPeak - 0.10;   % 100 ms
+            valleyIdx = find(t >= tStart, 1, 'first');
+        end
+    
+        if isempty(valleyIdx) || valleyIdx >= peakIdx
+            refTime = tPeak;
+            return;
+        end
+    
+        % ---- 6) Window from valley → peak (strictly rising side) ----
+        idxWin = valleyIdx:peakIdx;
+        tw = t(idxWin);
+        yw = y_s(idxWin);      % or use raw y(idxWin) if you prefer
+    
+        % Guard against nearly flat / low-energy windows
+        if numel(tw) < 3 || (max(yw) - min(yw)) < 0.01 * max(y_s)
+            refTime = tPeak;
+            return;
+        end
+    
+        % ---- 7) Energy-weighted centroid within valley → peak ----
+        Ew = yw.^2;
+        totalE = sum(Ew);
+    
+        if totalE <= 0
+            refTime = tPeak;
+        else
+            refTime = sum(tw .* Ew) / totalE;
+        end
+    end
+
+    function refTime = flvideo_findpeakstart(in_ref, refTime) % Old function, just finds local min
         if in_ref == 1
             xdata = get(data.handles_audioPlot, {'xdata', 'ydata'});
         else
@@ -1282,58 +1401,16 @@ function FLvideo(videoFile)
         x = xdata{1};
         y = xdata{2};
     
-        if numel(y) < 3
-            % Not enough points to calculate derivative
-            return
+        if numel(y) >= 3
+            idxCandidates = 1 + find( y(2:end-1) < y(1:end-2) & y(2:end-1) <= y(3:end) );
+        else
+            idxCandidates = [];
         end
     
-        % --- Compute velocity (first derivative)
-        dx = diff(x);
-        dy = diff(y);
-    
-        % Avoid division by zero if any duplicate x
-        dx(dx == 0) = eps;
-    
-        velocity = dy ./ dx;
-    
-        % Midpoints of x for aligning velocity
-        mid_x = (x(1:end-1) + x(2:end)) / 2;
-    
-        % --- Define a search window around refTime
-        tolerance = 0.10; % seconds; adjust as needed / match your highlight width
-        candidate_inds = find(abs(mid_x - refTime) <= tolerance);
-    
-        if isempty(candidate_inds)
-            % If no candidates near refTime, fall back to whole range
-            candidate_inds = 1:length(velocity);
+        if ~isempty(idxCandidates)
+            [~, k] = min(abs(x(idxCandidates) - refTime));
+            refTime = x(idxCandidates(k));
         end
-    
-        % Only consider positive-going slopes (onset)
-        pos_inds = candidate_inds(velocity(candidate_inds) > 0);
-    
-        if isempty(pos_inds)
-            % Nothing positive to work with; keep original refTime
-            return
-        end
-    
-        % --- Find peak velocity, then walk back to "onset"
-        % 1) index of maximum positive velocity within the window
-        [~, idx_rel] = max(velocity(pos_inds));
-        peak_idx = pos_inds(idx_rel);
-    
-        % 2) define a fraction of the peak as the onset threshold
-        frac = 0.3;  % 30% of max; tweak (0.2–0.5) depending on how early you want it
-        v_peak = velocity(peak_idx);
-        v_thresh = frac * v_peak;
-    
-        % 3) walk backwards from peak until velocity drops below threshold
-        onset_idx = peak_idx;
-        while onset_idx > 1 && velocity(onset_idx-1) > v_thresh
-            onset_idx = onset_idx - 1;
-        end
-    
-        % Update refTime to this "start-of-ramp" point
-        refTime = mid_x(onset_idx);
     end
 
     function flvideo_keyfcn(option, varargin)
@@ -1432,10 +1509,10 @@ function FLvideo(videoFile)
                     [nill,idx]=min(abs(refTime-data.handles_boundaries{in_ref-1}));
                     refTime=data.handles_boundaries{in_ref-1}(idx);
                 end
-            elseif data.keydown_isshiftpressed % Snap to valley (min)
-                refTime = flvideo_findpeakstart(in_ref, refTime);
+            elseif data.keydown_isshiftpressed % Snap to acooustic energy p-center
+                refTime = flvideo_findacousticpcenter(in_ref, refTime);
             elseif data.keydown_isaltpressed, % Snap to peak (max)
-                refTime = flvideo_findlocalmaximum(in_ref, refTime);
+                refTime = flvideo_findvelocitypcenter(in_ref, refTime);
             end
 
             % show timepoint line
@@ -1444,8 +1521,8 @@ function FLvideo(videoFile)
             elseif data.buttondown_selectingpoints==2, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLICK TO SELECT SECOND POINT',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
             elseif data.keydown_isctrlpressed, set(data.handles_audioCurrentPointText, 'string', ' CLICK&DRAG TO ZOOM', 'position', [refTime, data.audioYLim*[1;0]]);
             elseif data.keydown_isaltpressed && data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST BOUNDARY',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
-            elseif data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST VALLEY', refTime), 'position', [refTime, data.audioYLim * [1; 0]]);
-            elseif data.keydown_isaltpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST PEAK',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
+            elseif data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s ACOUSTIC P-CENTER', refTime), 'position', [refTime, data.audioYLim * [1; 0]]);
+            elseif data.keydown_isaltpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s VELOCITY P-CENTER',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
             %elseif data.keydown_isshiftpressed&&in_ref==1, set(data.handles_audioCurrentPointText, 'string', 'audio signal local maximum', 'position', [refTime, data.audioYLim*[1;0]]);
             %elseif data.keydown_isshiftpressed&&in_ref>1, set(data.handles_audioCurrentPointText, 'string', sprintf('%s local maximum',data.allPlotMeasures{in_ref-1}), 'position', [refTime, data.audioYLim*[1;0]]);
             else set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
