@@ -1272,13 +1272,9 @@ function FLvideo(videoFile)
         end
     end
 
-    function refTime = flvideo_findacousticpcenter(in_ref, refTime)
-    % Acoustic P-center based on:
-    %   1) Smoothed energy envelope for robust peak detection
-    %   2) Snap to nearest peak in time
-    %   3) Energy-weighted centroid between the previous local minimum
-    %      ("valley") and the peak
-    % → P-center always on rising side, never on the back side.
+    function refTime = flvideo_findacousticpcenter(in_ref, refTime) % Acoustic p center (SHIFT)
+        % Improved acoustic P-center with better artifact rejection
+        % Fix: robust "top entry" handling for flat-top/double-bump peaks
     
         % ---- 1) Get data from GUI ----
         if in_ref == 1
@@ -1286,7 +1282,6 @@ function FLvideo(videoFile)
         else
             xdata = get(data.handles_otherPlot1(in_ref-1), {'xdata','ydata'});
         end
-    
         t = xdata{1}(:);
         y = xdata{2}(:);
     
@@ -1294,28 +1289,34 @@ function FLvideo(videoFile)
             return;
         end
     
-        % ---- 2) Smoothed envelope (for structure, not timing) ----
+        % ---- 2) Multi-level envelope for structure vs. timing ----
         dt = mean(diff(t));
         if ~isfinite(dt) || dt <= 0
             return;
         end
     
-        winSamples = max(3, round(0.005 / dt));  % ~5 ms window
-        if mod(winSamples, 2) == 0
-            winSamples = winSamples + 1;
+        % Coarser smoothing for peak detection (structure)
+        winSamples_coarse = max(5, round(0.010 / dt));  % ~10 ms window
+        if mod(winSamples_coarse, 2) == 0
+            winSamples_coarse = winSamples_coarse + 1;
         end
+        y_coarse = smoothdata(abs(y), 'movmean', winSamples_coarse);
     
-        y_s = smoothdata(y, 'movmean', winSamples);
+        % Finer smoothing for timing (centroid calculation)
+        winSamples_fine = max(3, round(0.003 / dt));  % ~3 ms window
+        if mod(winSamples_fine, 2) == 0
+            winSamples_fine = winSamples_fine + 1;
+        end
+        y_fine = smoothdata(abs(y), 'movmean', winSamples_fine);
     
-        % ---- 3) Peak detection on smoothed envelope ----
-        if max(y_s) <= 0
+        % ---- 3) Peak detection on coarse envelope ----
+        if max(y_coarse) <= 0
             return;
         end
     
-        minProm = 0.03 * max(y_s);   % 3% prominence
-        minDist = 0.025;             % 25 ms peak spacing
-    
-        [pkVals, pkTimes] = findpeaks(y_s, t, ...
+        minProm = 0.10 * max(y_coarse);   % 10% prominence
+        minDist = 0.030;                  % 30 ms peak spacing
+        [pkVals, pkTimes] = findpeaks(y_coarse, t, ...
             'MinPeakProminence', minProm, ...
             'MinPeakDistance',  minDist);
     
@@ -1323,72 +1324,124 @@ function FLvideo(videoFile)
             return;
         end
     
-        % Convert to indices on t / y
+        % Convert peak times to indices
         idxPeaks = arrayfun(@(tt) find(t >= tt, 1, 'first'), pkTimes);
     
-        % ---- 4) Snap to nearest peak in time ----
+        % ---- 4) Snap to nearest peak ----
         dists = abs(pkTimes - refTime);
         [minD, jMin] = min(dists);
+        snapRadius = 0.06;
     
-        snapRadius = 0.06;   % 60 ms snap radius
         if isempty(minD) || minD > snapRadius
-            % No peak close enough: don't move refTime
             return;
         end
     
         peakIdx = idxPeaks(jMin);
+        peakVal = y_coarse(peakIdx);
         tPeak   = t(peakIdx);
-        yPeak   = y_s(peakIdx);
     
-        % ---- 5) Find previous valley (local minimum) before this peak ----
-        % Local minima on smoothed envelope
-        idxMins = 1 + find( ...
-            y_s(2:end-1) <= y_s(1:end-2) & ...
-            y_s(2:end-1) <  y_s(3:end) );
+        % ---- 4b) Robust "top entry" even with double bumps / shallow dips ----
+        % Define "top" in a neighborhood, then find FIRST entry into that top region
+        topWin = round(0.040 / dt);                    % ±40 ms neighborhood
+        Lw = max(1, peakIdx - topWin);
+        Rw = min(numel(y_coarse), peakIdx + topWin);
     
-        % Keep only minima that occur before the chosen peak
-        idxMins = idxMins(idxMins < peakIdx);
+        topVal  = max(y_coarse(Lw:Rw));                % true local max (flat-top)
+        topFrac = 0.95;                                % enter "top" at 95% of topVal
+        topThr  = topFrac * topVal;
     
-        if ~isempty(idxMins)
-            % Last minimum before the peak
-            valleyIdx = idxMins(end);
+        preRange = max(1, peakIdx - round(0.120/dt)) : peakIdx;   % look back 120 ms
+        yy = y_coarse(preRange);
     
-            % If valley is *too* far (e.g. >120 ms), clamp window length
-            maxBack = 0.12;  % 120 ms
-            if (tPeak - t(valleyIdx)) > maxBack
-                tStart = tPeak - maxBack;
-                valleyIdx = find(t >= tStart, 1, 'first');
-            end
+        lastBelowTop = find(yy < topThr, 1, 'last');
+        if isempty(lastBelowTop)
+            idxTop = peakIdx;                          % already in top region
         else
-            % No clear minimum: just go back fixed window
-            tStart = tPeak - 0.10;   % 100 ms
+            idxTop = preRange(lastBelowTop + 1);       % first sample in top region
+        end
+        tTop = t(idxTop);
+    
+        % ---- 5) Find valley/onset using energy threshold method ----
+        % Look backward from TOP ENTRY (not peakIdx) to avoid flat-top "dip" artifacts
+        energyThreshold = 0.20 * topVal;               % 20% of top energy
+    
+        % Search backward from top entry
+        searchStart = max(1, idxTop - round(0.150 / dt));  % Max 150ms back
+    
+        % Forbid valleys too close to the top to avoid picking the tiny dip on flat-top
+        minLead = 0.020;                               % 20 ms
+        latestValley = idxTop - round(minLead / dt);
+    
+        if latestValley <= searchStart
+            searchRange = searchStart:(idxTop-1);
+        else
+            searchRange = searchStart:latestValley;
+        end
+    
+        if isempty(searchRange)
+            refTime = tTop;
+            return;
+        end
+    
+        % Find last point below threshold (onset of rise)
+        belowThresh = find(y_coarse(searchRange) <= energyThreshold, 1, 'last');
+    
+        if ~isempty(belowThresh)
+            valleyIdx = searchRange(belowThresh);
+        else
+            % No clear threshold crossing: find local minimum
+            [~, minLoc] = min(y_coarse(searchRange));
+            valleyIdx = searchRange(minLoc);
+        end
+    
+        % Additional check: ensure valley has sufficient prominence
+        valleyVal = y_coarse(valleyIdx);
+        if (topVal - valleyVal) < 0.15 * topVal        % At least 15% depth
+            % Not a clear valley, use fixed window before top entry
+            tStart = tTop - 0.08;
             valleyIdx = find(t >= tStart, 1, 'first');
         end
     
-        if isempty(valleyIdx) || valleyIdx >= peakIdx
-            refTime = tPeak;
+        if isempty(valleyIdx) || valleyIdx >= idxTop
+            refTime = tTop;
             return;
         end
     
-        % ---- 6) Window from valley → peak (strictly rising side) ----
-        idxWin = valleyIdx:peakIdx;
+        % ---- 6) Window from onset → top entry ----
+        idxWin = valleyIdx:idxTop;
         tw = t(idxWin);
-        yw = y_s(idxWin);      % or use raw y(idxWin) if you prefer
+        yw = y_fine(idxWin);  % Use finer smoothing for centroid
     
-        % Guard against nearly flat / low-energy windows
-        if numel(tw) < 3 || (max(yw) - min(yw)) < 0.01 * max(y_s)
-            refTime = tPeak;
+        if numel(tw) < 3
+            refTime = tTop;
             return;
         end
     
-        % ---- 7) Energy-weighted centroid within valley → peak ----
+        % ---- 7) Bounded energy centroid (perceptual P-center) ----
         Ew = yw.^2;
-        totalE = sum(Ew);
+        
+        % Include a short amount of early sustain past top-entry
+        postTopDur = 0.020;  % 20 ms (tunable: 15–25 ms)
+        postTopSamp = round(postTopDur / dt);
+        
+        idxEnd = min(numel(Ew), (idxTop - valleyIdx + 1) + postTopSamp);
+        
+        tw_b = tw(1:idxEnd);
+        Ew_b = Ew(1:idxEnd);
+        
+        % Drop very low energy samples
+        thrE = prctile(Ew_b, 10);
+        validIdx = Ew_b > thrE;
+        if sum(validIdx) < 3
+            validIdx = true(size(Ew_b));
+        end
+        
+        refTime = sum(tw_b(validIdx) .* Ew_b(validIdx)) / sum(Ew_b(validIdx));
     
-        if totalE <= 0
-            refTime = tPeak;
-        else
-            refTime = sum(tw .* Ew) / totalE;
+        % ---- 8) Final sanity check ----
+        % Ensure P-center is within reasonable bounds
+        if refTime < t(valleyIdx) || refTime > tTop
+            refTime = tTop;
         end
     end
 
