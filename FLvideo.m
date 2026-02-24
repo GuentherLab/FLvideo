@@ -70,8 +70,8 @@ function FLvideo(videoFile)
         motionHighlight=2;  % default motion highlight: on
         cmapselect=3;       % default colormap: parula
         maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
-        smoothing={0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
-        threshold={.20 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
+        smoothing={0 0 0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
+        threshold={.20 .05 .05 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
         videodisplay=2;     % default video-frame behavior: current frame follows mouse motion
         textgridTier=0;
         textgridTier_options={'none'};
@@ -207,7 +207,14 @@ function FLvideo(videoFile)
             %set(hFig, 'name', 'Video Player');
             clf(hFig);
         end
-        data.allPlotMeasures={'Velocity of Movements', 'Acoustic Energy', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)', 'Audio Spectrogram'};
+        data.allPlotMeasures={ ...
+            'Velocity of Movements', ...
+            'Acoustic Energy', ...
+            'Acoustic Velocity', ...
+            'Acoustic Acceleration', ...
+            'Acceleration of Movements', ...
+            'Audio HNR (Harmonic to Noise Ratio)', ...
+            'Audio Spectrogram'};
         
         % Create a panel for the control buttons
         data.handles_hFig = hFig;
@@ -757,6 +764,14 @@ function FLvideo(videoFile)
                 if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
                     [data.harmonicRatio.P1_smoothed, data.harmonicRatio.P2_smoothed]=deal([]);
                 end
+            case 'Acoustic Velocity'
+                if isfield(data,'harmonicRatio') && ~isempty(data.harmonicRatio)
+                    [data.harmonicRatio.dE1_smoothed, data.harmonicRatio.dE2_smoothed] = deal([]);
+                end
+            case 'Acoustic Acceleration'
+                if isfield(data,'harmonicRatio') && ~isempty(data.harmonicRatio)
+                    [data.harmonicRatio.ddE1_smoothed, data.harmonicRatio.ddE2_smoothed] = deal([]);
+                end
         end
         if isfield(data,'globalMotionVel'), 
             if data.smoothing{nsmoothing}>0, fprintf('Smooths %s with %dms hanning window (use SHIFT + left-click to select local minima or ALT + left-click to select local maxima)\n', data.allPlotMeasures{nsmoothing},round(1000*data.maxsmoothing*data.smoothing{nsmoothing}));
@@ -790,6 +805,14 @@ function FLvideo(videoFile)
                 if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
                     [data.harmonicRatio.P1_thresholded, data.harmonicRatio.P2_thresholded]=deal([]);
                 end
+            case 'Acoustic Velocity'
+                if isfield(data,'harmonicRatio') && ~isempty(data.harmonicRatio)
+                    [data.harmonicRatio.dE1_thresholded, data.harmonicRatio.dE2_thresholded] = deal([]);
+                end
+            case 'Acoustic Acceleration'
+                if isfield(data,'harmonicRatio') && ~isempty(data.harmonicRatio)
+                    [data.harmonicRatio.ddE1_thresholded, data.harmonicRatio.ddE2_thresholded] = deal([]);
+                end
         end
         if isfield(data,'globalMotionVel'), 
             if ismac, ALT='OPTION'; else ALT='ALT'; end
@@ -806,8 +829,12 @@ function FLvideo(videoFile)
         if iscell(data.plotMeasure), data.plotMeasure=[data.plotMeasure{:}]; end
         if isfield(data,'globalMotionVel'), 
             for nplot=1:nplots
-                if ismember(data.allPlotMeasures{data.plotMeasure(nplot)},{'Velocity of Movements', 'Acoustic Energy', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)'}) % plots
-                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)},{'Acoustic Energy', 'Audio HNR (Harmonic to Noise Ratio)'})&&(~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio))
+                if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
+                   {'Velocity of Movements', 'Acoustic Energy', 'Acoustic Velocity', 'Acoustic Acceleration', ...
+                    'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)'}) % plots
+                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
+                       {'Acoustic Energy','Acoustic Velocity','Acoustic Acceleration','Audio HNR (Harmonic to Noise Ratio)'}) ...
+                       && (~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio))
                         hwindowsize=3/75;
                         [data.harmonicRatio.P1,data.harmonicRatio.t,data.harmonicRatio.E1]=harmonicRatio(data.audioSignalRaw,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                         [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignalDen,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
@@ -816,6 +843,25 @@ function FLvideo(videoFile)
                         data.harmonicRatio.P1 = -10*log10(1e-1)+10*log10(max(1e-1,data.harmonicRatio.P1./max(eps,1-data.harmonicRatio.P1))); % HR to HNR
                         data.harmonicRatio.P2 = -10*log10(1e-1)+10*log10(max(1e-1,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
                         data.harmonicRatio.SampleRate=1/median(diff(data.harmonicRatio.t));
+                        % After harmonicRatio is available:
+                        if ~isfield(data.harmonicRatio,'dE1') || isempty(data.harmonicRatio.dE1)
+                            dtH = 1 / data.harmonicRatio.SampleRate;
+                        
+                            % Use a simple centered derivative for stability
+                            E1 = data.harmonicRatio.E1(:);
+                            E2 = data.harmonicRatio.E2(:);
+                        
+                            dE1  = gradient(E1, dtH);
+                            dE2  = gradient(E2, dtH);
+                            ddE1 = gradient(dE1, dtH);
+                            ddE2 = gradient(dE2, dtH);
+                        
+                            % Store back as row vectors (to match your plotting expectations)
+                            data.harmonicRatio.dE1  = dE1(:).';
+                            data.harmonicRatio.dE2  = dE2(:).';
+                            data.harmonicRatio.ddE1 = ddE1(:).';
+                            data.harmonicRatio.ddE2 = ddE2(:).';
+                        end
                     end
                     [plotdataX, plotdataY, plotdataT,ischanged] = getMeasure(data.plotMeasure(nplot)); % gets measure timeseries (+optional smoothing & thresholding)
                     set(data.handles_otherPlot1(nplot),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
@@ -884,6 +930,20 @@ function FLvideo(videoFile)
                 end
                 SampleRate=data.harmonicRatio.SampleRate; 
                 plotdataX = data.harmonicRatio.t;
+            case 'Acoustic Velocity'
+                % Make sure harmonicRatio exists (same as Energy/HNR path)
+                if data.audioSignalSelect==1, fieldname='harmonicRatio.dE1';
+                else                         fieldname='harmonicRatio.dE2';
+                end
+                SampleRate = data.harmonicRatio.SampleRate;
+                plotdataX  = data.harmonicRatio.t;
+            
+            case 'Acoustic Acceleration'
+                if data.audioSignalSelect==1, fieldname='harmonicRatio.ddE1';
+                else                         fieldname='harmonicRatio.ddE2';
+                end
+                SampleRate = data.harmonicRatio.SampleRate;
+                plotdataX  = data.harmonicRatio.t;
         end
         fieldname_smoothed=[fieldname,'_smoothed'];
         fieldname_thresholded=[fieldname,'_thresholded'];
@@ -1272,7 +1332,10 @@ function FLvideo(videoFile)
         end
     end
 
+
+%{
     function refTime = flvideo_findacousticpcenter(in_ref, refTime) % Acoustic p center (SHIFT)
+        % Based on energy weighted centroid of rise
         % Improved acoustic P-center with better artifact rejection
         % Fix: robust "top entry" handling for flat-top/double-bump peaks
     
@@ -1443,6 +1506,152 @@ function FLvideo(videoFile)
         if refTime < t(valleyIdx) || refTime > tTop
             refTime = tTop;
         end
+    end
+%}
+
+    function refTime = flvideo_findacousticpcenter(in_ref, refTime) % Acoustic p center (SHIFT)
+        % Acoustic P-center based on Rathcke et al. (JASA 2024):
+        %   1) short-time ENERGY contour (40 ms window, 1 ms hop)
+        %   2) smooth energy
+        %   3) energy difference function dE(t)=E(t)-E(t-1) (velocity of energy)
+        %   4) suppress fricative-like frames via ZCR > 4000 (mask those frames)
+        %   5) P-center = time of MAX dE within a local search window around refTime
+        %
+        % Notes:
+        % - The paper selects max dE within syllable boundaries. In your GUI workflow,
+        %   we don't have syllable boundaries here, so we use a "snap/search window"
+        %   around the incoming refTime (consistent with how your current function works).
+        % - Keeps your variable patterns and early-return behavior.
+    
+        % ---- 1) Get data from GUI ----
+        if in_ref == 1
+            xdata = get(data.handles_audioPlot, {'xdata','ydata'});
+        else
+            xdata = get(data.handles_otherPlot1(in_ref-1), {'xdata','ydata'});
+        end
+        t = xdata{1}(:);
+        y = xdata{2}(:);
+    
+        if numel(t) < 10 || numel(y) < 10 || numel(t) ~= numel(y)
+            return;
+        end
+    
+        % ---- 2) Basic timing ----
+        dt = mean(diff(t));
+        if ~isfinite(dt) || dt <= 0
+            return;
+        end
+    
+        % Treat as uniformly sampled
+        fs = 1 / dt;
+    
+        % ---- 3) Paper parameters (mapped to samples on your t-grid) ----
+        winDurE = 0.040;   % 40 ms energy window
+        hopDurE = 0.001;   % 1 ms hop (energy sampled every 1 ms)
+    
+        winSampE = max(3, round(winDurE / dt));
+        hopSampE = max(1, round(hopDurE / dt));
+    
+        if winSampE >= numel(y)
+            return;
+        end
+    
+        % Paper describes smoothing "order 6" for energy and "order 10" for dE.
+        % Interpret as short moving-average lengths.
+        smoothLenE  = 6;
+        smoothLendE = 10;
+    
+        % ZCR threshold for fricative-like regions (crossings per second)
+        zcrThr = 4000;
+    
+        % ---- 4) Compute short-time ENERGY contour E(t) ----
+        % We'll compute frame energies at frame CENTER times.
+        n = numel(y);
+        startIdx = 1:hopSampE:(n - winSampE + 1);
+        nFrames  = numel(startIdx);
+    
+        E  = zeros(nFrames, 1);
+        Z  = zeros(nFrames, 1);   % ZCR (crossings/s)
+        tE = zeros(nFrames, 1);
+    
+        for k = 1:nFrames
+            i0 = startIdx(k);
+            i1 = i0 + winSampE - 1;
+    
+            frame = y(i0:i1);
+    
+            % Energy: mean squared amplitude (scale-invariant vs sum)
+            E(k) = mean(frame.^2);
+    
+            % Zero crossing rate: count sign changes / sec
+            s = sign(frame);
+            s(s == 0) = 1; % treat exact zeros as positive to avoid extra crossings
+            crossings = sum(abs(diff(s)) > 0);
+            Z(k) = crossings / (winSampE / fs);
+    
+            % Frame center time
+            centerIdx = i0 + floor((winSampE - 1) / 2);
+            tE(k) = t(centerIdx);
+        end
+    
+        if all(~isfinite(E)) || max(E) <= 0
+            return;
+        end
+    
+        % ---- 5) Smooth energy contour ----
+        E_s = movmean(E, smoothLenE, 'Endpoints','shrink');
+    
+        % ---- 6) Energy difference function (velocity of energy) + smoothing ----
+        dE = [0; diff(E_s)];
+        dE_s = movmean(dE, smoothLendE, 'Endpoints','shrink');
+    
+        % ---- 7) Mask fricative-like frames via ZCR threshold ----
+        % Paper: disregard samples where ZCR > 4000.
+        dE_m = dE_s;
+        dE_m(Z > zcrThr) = -Inf;
+    
+        % ---- 8) Choose P-center as max dE within a local window around refTime ----
+        % Paper uses syllable boundaries; here we use a search window consistent
+        % with your "snap" style.
+        searchHalfWin = 0.120;  % +/- 120 ms around refTime (tunable)
+        tMin = refTime - searchHalfWin;
+        tMax = refTime + searchHalfWin;
+    
+        idxWin = find(tE >= tMin & tE <= tMax);
+    
+        if isempty(idxWin)
+            return;
+        end
+    
+        [bestVal, relIdx] = max(dE_m(idxWin));
+        if ~isfinite(bestVal)
+            % Fallback: if everything was masked, try unmasked dE within window
+            [bestVal2, relIdx2] = max(dE_s(idxWin));
+            if ~isfinite(bestVal2)
+                return;
+            end
+            kBest = idxWin(relIdx2);
+        else
+            kBest = idxWin(relIdx);
+        end
+    
+        tPc = tE(kBest);
+    
+        % ---- 9) Optional "snap radius" sanity, similar to your old behavior ----
+        snapRadius = 0.060;  % 60 ms
+        if abs(tPc - refTime) > snapRadius
+            % If it's too far from the user's intended neighborhood, don't move it.
+            return;
+        end
+    
+        % ---- 10) Final sanity clamp (keep within search window) ----
+        if tPc < tMin
+            tPc = tMin;
+        elseif tPc > tMax
+            tPc = tMax;
+        end
+    
+        refTime = tPc;
     end
 
     function refTime = flvideo_findpeakstart(in_ref, refTime) % Old function, just finds local min
