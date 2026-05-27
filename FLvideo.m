@@ -133,7 +133,7 @@ function FLvideo(videoFile)
         else         
             data=[];
         end
-        if ~isempty(videoFile), 
+        if ~isempty(videoFile)&&exist(videoFile,'file'),
             try
                 switch(regexprep(videoFile,'^.*\.',''))
                     case 'mat' % reads video file from .mat file
@@ -148,7 +148,57 @@ function FLvideo(videoFile)
 
                     otherwise % reads video file
                         % Extract audio signal
-                        [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+                        if isequal(regexprep(videoFile,'^.*\.',''),'avi')
+                            try
+                                [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+                            catch me
+                                answer = questdlg({'Unable to load AVI file','Do you like to convert it first to mp4 format?'},'avi format','Yes (same filename)','Yes (temporal filename)','No','No');
+                                switch(answer)
+                                    case 'Yes (same filename)', outputfile=regexprep(videoFile,'\.avi$','.mp4');
+                                    case 'Yes (temporal filename)', outputfile=fullfile(pwd,'VidTest_temporalfile_video.mp4');
+                                    otherwise, rethrow(me); 
+                                end
+                                if ispc
+                                    args_ffmpeg=sprintf('-y -i "%s" -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k "%s"', videoFile,outputfile);
+                                    cmd='ffmpeg'; args=args_ffmpeg;
+                                    [ko,msg]=system('where ffmpeg');
+                                    if ko==0 % try merging using ffmpeg
+                                        [ko,msg]=system(sprintf('%s %s', cmd, args))
+                                        if ko~=0,
+                                            disp(sprintf('%s %s', cmd, args));
+                                            disp(msg);
+                                        end
+                                        disp(['Clip saved to: ', outputfile]);
+                                    else
+                                        disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add its location to your system PATH');
+                                    end
+                                else
+                                    args_ffmpeg=sprintf('-y -i ''%s'' -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k ''%s''', videoFile,outputfile);
+                                    cmd='ffmpeg'; args=args_ffmpeg;
+                                    [ko,msg]=system('which ffmpeg');
+                                    if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+                                    if ko~=0 && ~isempty('/Applications/ffmpeg'), ko=0; cmd='/Applications/ffmpeg'; end
+                                    if ko==0 % try merging using ffmpeg
+                                        [ko,msg]=system(sprintf('%s %s', cmd, args));
+                                        if ko~=0,
+                                            disp(sprintf('%s %s', cmd, args));
+                                            disp(msg);
+                                        end
+                                        disp(['Clip saved to: ', outputfile]);
+                                    else
+                                        if ismac, disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add it to the Applications folder');
+                                        else disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
+                                        end
+                                    end
+                                end
+                                videoFile=outputfile;
+                                [audioSignal, audioFs] = audioread(videoFile); 
+                                %system('ffmpeg -i vol_8115-0006_movie.avi -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k vol_8115-0006_movie.mp4');
+                                %system('ffmpeg -i vol_8115-0006_movie.avi -c:v libx264 -c:a aac -crf 23 -preset medium vol_8115-0006_movie.mp4');
+                            end
+                        else
+                            [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+                        end
                         audioSignal=audioSignal(:,1); % mono audio track
                         % Create a VideoReader object
                         v = VideoReader(videoFile);
@@ -157,6 +207,7 @@ function FLvideo(videoFile)
                         disp(['Duration: ', num2str(v.Duration), ' seconds (',num2str(v.numFrames), ' frames)']);
                         disp(['Video Frame Rate: ', num2str(v.FrameRate), ' fps']);
                         disp(['Video Resolution: ', num2str(v.Width), 'x', num2str(v.Height)]);
+                        disp(['Audio Duration: ', num2str(numel(audioSignal)/audioFs)]);
                         disp(['Audio Sample Rate: ', num2str(audioFs)]);
                         %disp(['Audio Format: ', v.AudioFormat]); % Audio information, if available
 
