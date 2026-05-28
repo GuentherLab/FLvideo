@@ -57,6 +57,8 @@ if options.disp, hfig=figure; end
 
 IDX=1:numel(files);
 TALL=[];
+DelaySummary={};
+
 for idx=IDX
     videoFile=files{idx};
     [outputPath,outputName,outputExt]=fileparts(videoFile);
@@ -68,7 +70,7 @@ for idx=IDX
     v = VideoReader(videoFile);
 
     % Check video properties
-    if options.disp
+    if false&&options.disp
         disp(['Duration: ', num2str(v.Duration), ' seconds (',num2str(v.numFrames), ' frames)']);
         disp(['Video Frame Rate: ', num2str(v.FrameRate), ' fps']);
         disp(['Video Resolution: ', num2str(v.Width), 'x', num2str(v.Height)]);
@@ -108,7 +110,7 @@ for idx=IDX
     k=cumsum(sqrt(dA));
     kHALF=sum(k<=k(end)/2);
     if options.disp
-        hax1=subplot(211,'parent',hfig); plot((0:numel(audioSignal)-1)/audioFs,audioSignal,'parent',hax1); axis(hax1,'tight'); xlabel(hax1,'time (s)');
+        hax1=subplot(211,'parent',hfig); plot((0:numel(audioSignal)-1)/audioFs,audioSignal,'parent',hax1); axis(hax1,'tight'); xlabel(hax1,'time (s)'); ylabel(hax1,'waveform');
         hright=patch([kHALF/FrameRate kHALF/FrameRate get(gca,'xlim')*[0;1]*[1 1]], get(gca,'ylim')*[1 0 0 1;0 1 1 0],'w','facealpha',.9,'edgecolor','none','parent',hax1);
         hleft=patch([0 0 kHALF/FrameRate kHALF/FrameRate], get(gca,'ylim')*[1 0 0 1;0 1 1 0],'w','facealpha',.9,'edgecolor','none','parent',hax1);
         hax2=subplot(212,'parent',hfig);
@@ -168,12 +170,13 @@ for idx=IDX
         if options.disp, 
             plot(OPTIMDELAY,rmax,'o','parent',hax2); 
             hold(hax2,'off'); grid(hax2,'on'); xline(hax2,OPTIMDELAY);
-            if options.splithalf&&hidx==1, title(hax2,sprintf('%s (first half) delay = %dms',fname{idx},round(1000*OPTIMDELAY)));
-            elseif options.splithalf&&hidx==2, title(hax2,sprintf('%s (second half) delay = %dms',fname{idx},round(1000*OPTIMDELAY)));
-            else title(hax2,sprintf('%s tau = %dms',fname{idx},round(1000*OPTIMDELAY)));
+            if options.splithalf&&hidx==1, title(hax2,sprintf('%s (first half): estimated audio delay = %dms',fname{idx},round(1000*OPTIMDELAY))); fprintf('%s (first half): estimated audio delay = %fs\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
+            elseif options.splithalf&&hidx==2, title(hax2,sprintf('%s (second half): estimated audio delay = %dms',fname{idx},round(1000*OPTIMDELAY))); fprintf('%s (second half): estimated audio delay = %fs\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
+            else title(hax2,sprintf('%s: estimated audio delay = %dms',fname{idx},round(1000*OPTIMDELAY))); fprintf('%s: estimated audio delay = %fs\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
             end
-            axis(hax2,'tight');
-            fprintf('%s, %f\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
+            axis(hax2,'tight');            
+            xlabel(hax2,'Audio delay (s)');
+            ylabel(hax2,'AV match');
         end        
         if options.print
             if options.splithalf&&hidx==1, print(hfig,'-djpeg90','-r600','-opengl',fullfile(outputPath,['realigned_',outputName,'_half1.jpg']));
@@ -183,6 +186,12 @@ for idx=IDX
         end
 
         TALL=[TALL; OPTIMDELAY];
+        switch(hidx)
+            case 0, hlabel='entire clip';
+            case 1, hlabel='first half';
+            case 2, hlabel='second half';
+        end
+        DelaySummary(end+1,:)={regexprep(videoFile,'.*[\\\/]',''),hlabel,OPTIMDELAY,1000*OPTIMDELAY};
         if options.pause, pause; end
     end
 
@@ -209,7 +218,7 @@ for idx=IDX
             if ismember(SampleRate,[11025, 22050]), SampleRate=44100;
             else SampleRate=48000;
             end
-            disp(['Clip audio resampled from ', num2str(audioFs), 'Hz to ',num2str(SampleRate),'Hz']);
+            %disp(['Clip audio resampled from ', num2str(audioFs), 'Hz to ',num2str(SampleRate),'Hz']);
             audioClip=interpft(outputSignal,round(length(outputSignal)*SampleRate/audioFs));
         end
         audiowrite('FLvideo_realign_temporalfile_audio.mp4', audioClip, SampleRate);
@@ -228,8 +237,7 @@ for idx=IDX
                     disp(sprintf('%s %s', cmd, args));
                     disp(msg);
                 end
-                fprintf('Audio delayed by %dms\n', round(1000*OPTIMDELAY));
-                fprintf('Clip saved to: %s\n', outputFile);
+                fprintf('Clip saved to %s with audio delayed by %dms\n', outputFile, round(1000*OPTIMDELAY));
             else
                 disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
             end
@@ -253,8 +261,7 @@ for idx=IDX
                     disp(sprintf('%s %s', cmd, args));
                     disp(msg);
                 end
-                fprintf('Audio delayed by %dms\n', round(1000*OPTIMDELAY));
-                fprintf('Clip saved to: %s\n', outputFile);
+                fprintf('Clip saved to %s with audio delayed by %dms\n', outputFile, round(1000*OPTIMDELAY));
             else
                 if ismac, disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the Applications folder');
                 else disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
@@ -268,6 +275,37 @@ for idx=IDX
         fclose(fh);
     end
 end
+
+if options.disp&&numel(files)>1
+    clf(hfig);
+    hax=axes('units','norm','position',[.2 .5 .6 .3],'parent',hfig);
+    if options.splithalf, 
+        tall=reshape(TALL,3,[]);
+        bar(tall','parent',hax); 
+        set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
+        a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5);
+        legend('first half','second half','whole clip');
+    else 
+        bar(TALL,'parent',hax); 
+        set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
+        a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5);
+    end
+    ylabel('Estimated lag (s)');
+    if options.splithalf,
+        fprintf('Within/Between variability = %f\n', mean(std(tall,0,1))/std(mean(tall,1)));
+    end
+    if options.print
+        print(hfig,'-djpeg90','-r600','-opengl',fullfile(outputPath,['FLvideo_realign_summary_',datestr(now,'dd-mmm-yyyy-HH-MM-SS'),'.jpg']));
+    end
+    if ~isempty(DelaySummary)
+        fprintf('\n\nSummary of optimal delays\n');
+        fprintf('File\tSegment\tDelay_ms\n');
+        for n=1:size(DelaySummary,1)
+            fprintf('%s\t%s\t%.3f ms\n',DelaySummary{n,1},DelaySummary{n,2},DelaySummary{n,4});
+        end
+    end
+end
+
 end
 
 function w=hanning(n);
