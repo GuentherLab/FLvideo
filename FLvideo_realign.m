@@ -39,6 +39,11 @@ for n=1:2:numel(varargin)-1, toptions=fieldnames(options); assert(isfield(option
 
 if isempty(files), return; end
 if options.print, options.disp=true; end
+if ischar(files)&&any(files=='*'), 
+    f=dir(files);
+    files=arrayfun(@(i)fullfile(f(i).folder,f(i).name),find(~[f.isdir]),'uni',0);
+    fprintf('Found %d files\n',numel(files));
+end
 if ischar(files), files={files}; end
 [nill,fname,nill]=cellfun(@fileparts,files,'UniformOutput',false);
 fname=regexprep(fname,'_',' ');
@@ -271,6 +276,36 @@ else,%odd
    w = [w; flipud(w(1:end-1))];
 end
 end
+
+function [w,idx] = parabmax(R,dim)
+% parabolic interpolation max
+% [x_max, idx] = parabmax(x);
+% returns the interpolated maximum value x_max
+% and the interpolated index to the maximum value.
+%
+% for matrices: [x_max, idx] = parabmax(x,dim);
+% computes the maximum along the dim dimension 
+% (note: only 2D matrices)
+%
+
+sR=size(R);
+if nargin<2, dim=find(sR>1,1); end
+if isempty(dim); dim=1; end
+if dim~=1, R=permute(R,[dim,2:dim-1,1,dim+1:numel(sR)]); end
+[w,idx]=max(R,[],1);
+valid=idx>1&idx<size(R,1);
+w3=R(max(1,min(size(R,1), repmat(idx,3,1)+repmat((-1:1)',1,numel(idx))))+(0:size(R,2)-1)*size(R,1)); % parabolic peak-height interpolation
+k=(2*w3(2,:)-w3(3,:)-w3(1,:));
+valid=valid&k>0;
+w(valid)=w3(2,valid)+(w3(1,valid)-w3(3,valid)).^2./k(valid)/8;
+idx(valid)=idx(valid)+(w3(3,valid)-w3(1,valid))./k(valid)/2;
+
+if dim~=1, 
+    w=permute(w,[dim,2:dim-1,1,dim+1:numel(sR)]); 
+    idx=permute(idx,[dim,2:dim-1,1,dim+1:numel(sR)]); 
+end
+end
+
 
 
 
