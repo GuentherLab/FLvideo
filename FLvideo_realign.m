@@ -48,7 +48,7 @@ if ischar(files), files={files}; end
 [nill,fname,nill]=cellfun(@fileparts,files,'UniformOutput',false);
 fname=regexprep(fname,'_',' ');
 
-if options.splithalf, HIDX=0:2;
+if options.splithalf, HIDX=[1:2,0];
 else HIDX=0;
 end
 if options.disp, hfig=figure; end
