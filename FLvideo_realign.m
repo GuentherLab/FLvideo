@@ -284,7 +284,7 @@ if options.disp&&numel(files)>1
         bar(tall','parent',hax); 
         set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
         a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5);
-        legend('first half','second half','whole clip');
+        legend('first half','second half','whole clip','location','northeastoutside');
     else 
         bar(TALL,'parent',hax); 
         set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
