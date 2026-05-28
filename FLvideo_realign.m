@@ -20,6 +20,7 @@ function FLvideo_realign(files,varargin)
 %    print          : set to false to skip creation of .jpg image with display of delay optimization results (default true)
 %    save           : set to false to skip creation of audio-delay-corrected video file (default true)
 %    delay          : set to value of audio delay (in seconds); this will skip the 4optimization procedure and use the user-entered delay value instead when creating the audio-delay-corrected output file (default [])
+%    pause          : set to true to pause (wait for user to hit ENTER) after each plot
 %
 % e.g. 
 % FLvideo_realign('S13_vol_8115-0010_movie.mp4', 'print', true);
@@ -34,6 +35,7 @@ options=struct(...
     'print',true,...
     'disp',true,...
     'delay',[],...
+    'pause',false,...
     'save',true);
 for n=1:2:numel(varargin)-1, toptions=fieldnames(options); assert(isfield(options,lower(varargin{n})),'unrecognized option %s (valid options %s)',varargin{n},sprintf('%s ',toptions{:})); options.(lower(varargin{n}))=varargin{n+1}; end
 
@@ -181,6 +183,7 @@ for idx=IDX
         end
 
         TALL=[TALL; OPTIMDELAY];
+        if options.pause, pause; end
     end
 
     if options.save
