@@ -11,9 +11,14 @@
 function FLvideo(videoFile)
 
     if nargin<1, videoFile = ''; end % Video file path
-    
+    if nargin==1&&ischar(videoFile)&&any(videoFile=='*'), 
+        f=dir(videoFile);
+        files=arrayfun(@(i)fullfile(f(i).folder,f(i).name),find(~[f.isdir]),'uni',0);
+        fprintf('Found %d files\n',numel(files));
+        cellfun(@(file)FLvideo(file),files,'uni',0);
+        return
+    end
     data = initialize(videoFile); % initializes GUI (and data if videoFile is specified)
-
     % Callback Functions (NOTE: they all have access to the shared variable "data")
 
     % function handling real-time update of audio&video display

@@ -21,6 +21,7 @@ function FLvideo_realign(files,varargin)
 %    save           : set to false to skip creation of audio-delay-corrected video file (default true)
 %    delay          : set to value of audio delay (in seconds); this will skip the 4optimization procedure and use the user-entered delay value instead when creating the audio-delay-corrected output file (default [])
 %    pause          : set to true to pause (wait for user to hit ENTER) after each plot
+%    convertavi     : if video files are in an unrecognized AVI format, setting convertavi to true will convert the original .avi files into .mp4 before proceeding
 %
 % e.g. 
 % FLvideo_realign('S13_vol_8115-0010_movie.mp4', 'print', true);
@@ -36,7 +37,8 @@ options=struct(...
     'disp',true,...
     'delay',[],...
     'pause',false,...
-    'save',true);
+    'save',true,...
+    'convertavi',[]);
 for n=1:2:numel(varargin)-1, toptions=fieldnames(options); assert(isfield(options,lower(varargin{n})),'unrecognized option %s (valid options %s)',varargin{n},sprintf('%s ',toptions{:})); options.(lower(varargin{n}))=varargin{n+1}; end
 
 if isempty(files), return; end
@@ -62,7 +64,59 @@ DelaySummary={};
 for idx=IDX
     videoFile=files{idx};
     [outputPath,outputName,outputExt]=fileparts(videoFile);
-    [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+
+    try
+        [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+    catch me
+        if ~isempty(options.convertavi)&&options.convertavi, outputfile=regexprep(videoFile,'\.avi$','.mp4');
+        elseif ~isempty(options.convertavi), rethrow(me);
+        else
+            answer = questdlg({'Unable to load AVI file','Do you like to convert it first to mp4 format?'},'avi format','Yes (same filename)','Yes (temporal filename)','No','No');
+            switch(answer)
+                case 'Yes (same filename)', outputfile=regexprep(videoFile,'\.avi$','.mp4');
+                case 'Yes (temporal filename)', outputfile=fullfile(pwd,'VidTest_temporalfile_video.mp4');
+                otherwise, rethrow(me);
+            end
+        end
+        if ispc
+            args_ffmpeg=sprintf('-y -i "%s" -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k "%s"', videoFile,outputfile);
+            cmd='ffmpeg'; args=args_ffmpeg;
+            [ko,msg]=system('where ffmpeg');
+            if ko==0 % try merging using ffmpeg
+                [ko,msg]=system(sprintf('%s %s', cmd, args))
+                if ko~=0,
+                    disp(sprintf('%s %s', cmd, args));
+                    disp(msg);
+                end
+                disp(['Clip saved to: ', outputfile]);
+            else
+                disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add its location to your system PATH');
+            end
+        else
+            args_ffmpeg=sprintf('-y -i ''%s'' -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k ''%s''', videoFile,outputfile);
+            cmd='ffmpeg'; args=args_ffmpeg;
+            [ko,msg]=system('which ffmpeg');
+            if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+            if ko~=0 && ~isempty('/Applications/ffmpeg'), ko=0; cmd='/Applications/ffmpeg'; end
+            if ko==0 % try merging using ffmpeg
+                [ko,msg]=system(sprintf('%s %s', cmd, args));
+                if ko~=0,
+                    disp(sprintf('%s %s', cmd, args));
+                    disp(msg);
+                end
+                disp(['Clip saved to: ', outputfile]);
+            else
+                if ismac, disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add it to the Applications folder');
+                else disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
+                end
+            end
+        end
+        videoFile=outputfile;
+        [audioSignal, audioFs] = audioread(videoFile);
+        %system('ffmpeg -i vol_8115-0006_movie.avi -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k vol_8115-0006_movie.mp4');
+        %system('ffmpeg -i vol_8115-0006_movie.avi -c:v libx264 -c:a aac -crf 23 -preset medium vol_8115-0006_movie.mp4');
+    end
+    %[audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
     audioSignal=audioSignal(:,1); % mono audio track
 
 
@@ -283,12 +337,12 @@ if options.disp&&numel(files)>1
         tall=reshape(TALL,3,[]);
         bar(tall','parent',hax); 
         set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
-        a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5);
+        try, a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5); end
         legend('first half','second half','whole clip','location','northeastoutside');
     else 
         bar(TALL,'parent',hax); 
         set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
-        a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5);
+        try, a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5); end
     end
     ylabel('Estimated lag (s)');
     if options.splithalf,
