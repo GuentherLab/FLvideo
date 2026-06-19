@@ -1120,9 +1120,11 @@ function FLvideo(videoFile)
 
         switch(regexprep(fileName,'^.*\.',''))
             case 'mp4'
-                tempfile='FLvideo_temporalfile_video.mp4';
+                tempfilekey=[datestr(now,'HHMMSSFFF'),regexprep(char(matlab.lang.internal.uuid),'-','')];
+                tempfile_video=fullfile(pwd,['FLvideo_temporalfile_video_',tempfilekey,'.mp4']);
+                tempfile_audio=fullfile(pwd,['FLvideo_temporalfile_audio_',tempfilekey,'.mp4']);
                 % Write video
-                writer = VideoWriter(tempfile,'MPEG-4');
+                writer = VideoWriter(tempfile_video,'MPEG-4');
                 writer.FrameRate=data.FrameRate;
                 open(writer);
                 for i = startFrame:endFrame
@@ -1141,10 +1143,10 @@ function FLvideo(videoFile)
                     disp(['Clip audio resampled from ', num2str(data.SampleRate), 'Hz to ',num2str(SampleRate),'Hz']);
                     audioClip=interpft(audioClip,round(length(audioClip)*SampleRate/data.SampleRate));
                 end
-                audiowrite('FLvideo_temporalfile_audio.mp4', audioClip, SampleRate);
+                audiowrite(tempfile_audio, audioClip, SampleRate);
                 if ispc
-                    args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'FLvideo_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_temporalfile_audio.mp4'), outputFile);
-                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'FLvideo_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_temporalfile_audio.mp4'), outputFile);
+                    args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', tempfile_video,tempfile_audio, outputFile);
+                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('where ffmpeg');
                     if ko~=0
@@ -1158,13 +1160,12 @@ function FLvideo(videoFile)
                             disp(msg); 
                         end
                         disp(['Clip saved to: ', outputFile]);
-                        delete('
                     else
                         disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
                     end
                 else
-                    args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'FLvideo_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_temporalfile_audio.mp4'), outputFile);
-                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'FLvideo_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_temporalfile_audio.mp4'), outputFile);
+                    args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', tempfile_video,tempfile_audio, outputFile);
+                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('which ffmpeg');
                     if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
@@ -1190,8 +1191,8 @@ function FLvideo(videoFile)
                     end
                 end
                 try
-                    delete('FLvideo_temporalfile_video.mp4');
-                    delete('FLvideo_temporalfile_audio.mp4');
+                    delete(tempfile_video);
+                    delete(tempfile_audio);
                 end
 
             case 'avi'

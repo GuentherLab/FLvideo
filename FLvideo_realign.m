@@ -253,10 +253,12 @@ for idx=IDX
         if ~isempty(options.delay), OPTIMDELAY=optims.delay; end
         outputSignal=audioSignal(max(1,round(OPTIMDELAY*audioFs):numel(audioSignal)));
         outputFile=fullfile(outputPath,['realigned_',outputName,'.mp4']);
-        tempfile='FLvideo_realign_temporalfile_video.mp4';
+        tempfilekey=[datestr(now,'HHMMSSFFF'),regexprep(char(matlab.lang.internal.uuid),'-','')];
+        tempfile_video=fullfile(pwd,['FLvideo_temporalfile_video_',tempfilekey,'.mp4']);
+        tempfile_audio=fullfile(pwd,['FLvideo_temporalfile_audio_',tempfilekey,'.mp4']);
         if exist(outputFile,'file'), delete(outputFile); end
         % Write video
-        writer = VideoWriter(tempfile,'MPEG-4');
+        writer = VideoWriter(tempfile_video,'MPEG-4');
         writer.FrameRate=FrameRate;
         open(writer);
         for i = 1:numFrames
@@ -275,10 +277,10 @@ for idx=IDX
             %disp(['Clip audio resampled from ', num2str(audioFs), 'Hz to ',num2str(SampleRate),'Hz']);
             audioClip=interpft(outputSignal,round(length(outputSignal)*SampleRate/audioFs));
         end
-        audiowrite('FLvideo_realign_temporalfile_audio.mp4', audioClip, SampleRate);
+        audiowrite(tempfile_audio, audioClip, SampleRate);
         if ispc
-            args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', fullfile(pwd,'FLvideo_realign_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_realign_temporalfile_audio.mp4'), outputFile);
-            args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'FLvideo_realign_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_realign_temporalfile_audio.mp4'), outputFile);
+            args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', tempfile_video,tempfile_audio, outputFile);
+            args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
             cmd='ffmpeg'; args=args_ffmpeg;
             [ko,msg]=system('where ffmpeg');
             if ko~=0
@@ -296,8 +298,8 @@ for idx=IDX
                 disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
             end
         else
-            args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', fullfile(pwd,'FLvideo_realign_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_realign_temporalfile_audio.mp4'), outputFile);
-            args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', fullfile(pwd,'FLvideo_realign_temporalfile_video.mp4'),fullfile(pwd,'/FLvideo_realign_temporalfile_audio.mp4'), outputFile);
+            args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', tempfile_video,tempfile_audio, outputFile);
+            args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
             cmd='ffmpeg'; args=args_ffmpeg;
             [ko,msg]=system('which ffmpeg');
             if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
@@ -323,8 +325,8 @@ for idx=IDX
             end
         end
         try
-            delete('FLvideo_realign_temporalfile_video.mp4');
-            delete('FLvideo_realign_temporalfile_audio.mp4');
+            delete(tempfile_video);
+            delete(tempfile_audio);
         end
         fh=fopen(fullfile(outputPath,['realigned_',outputName,'.json']),'wt');
         fprintf(fh,'{\n');
