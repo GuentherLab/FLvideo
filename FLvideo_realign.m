@@ -322,6 +322,10 @@ for idx=IDX
                 end
             end
         end
+        try
+            delete('FLvideo_realign_temporalfile_video.mp4');
+            delete('FLvideo_realign_temporalfile_audio.mp4');
+        end
         fh=fopen(fullfile(outputPath,['realigned_',outputName,'.json']),'wt');
         fprintf(fh,'{\n');
         fprintf(fh,'  "delay": %.3f\n',OPTIMDELAY);
