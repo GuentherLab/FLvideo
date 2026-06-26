@@ -70,8 +70,8 @@ function FLvideo(videoFile)
         motionHighlight=2;  % default motion highlight: on
         cmapselect=3;       % default colormap: parula
         maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
-        smoothing={0 0 0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
-        threshold={.20 .05 .05 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
+        smoothing={0 0 0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: as proportion of max smoothing; in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic acceleration, acceleration, HNR)
+        threshold={.20 .05 .05 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic acceleration, acceleration, HNR)
         videodisplay=2;     % default video-frame behavior: current frame follows mouse motion
         textgridTier=0;
         textgridTier_options={'none'};
@@ -835,7 +835,7 @@ function FLvideo(videoFile)
                     if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
                        {'Acoustic Energy','Acoustic Velocity','Acoustic Acceleration','Audio HNR (Harmonic to Noise Ratio)'}) ...
                        && (~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio))
-                        hwindowsize=3/75;
+                        hwindowsize=.040; %3/75;
                         [data.harmonicRatio.P1,data.harmonicRatio.t,data.harmonicRatio.E1]=harmonicRatio(data.audioSignalRaw,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                         [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignalDen,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                         data.harmonicRatio.E1 = sqrt(max(0,data.harmonicRatio.E1)); % MS to RMS
@@ -844,38 +844,47 @@ function FLvideo(videoFile)
                         data.harmonicRatio.P2 = -10*log10(1e-1)+10*log10(max(1e-1,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
                         data.harmonicRatio.SampleRate=1/median(diff(data.harmonicRatio.t));
                         % After harmonicRatio is available:
-                        if ~isfield(data.harmonicRatio,'dE1') || isempty(data.harmonicRatio.dE1)
-                            dtH = 1 / data.harmonicRatio.SampleRate;
-                        
-                            % Use a simple centered derivative for stability
-                            E1 = data.harmonicRatio.E1(:);
-                            E2 = data.harmonicRatio.E2(:);
-                        
-                            dE1  = gradient(E1, dtH);
-                            dE2  = gradient(E2, dtH);
-                            ddE1 = gradient(dE1, dtH);
-                            ddE2 = gradient(dE2, dtH);
-                        
-                            % Store back as row vectors (to match your plotting expectations)
-                            data.harmonicRatio.dE1  = dE1(:).';
-                            data.harmonicRatio.dE2  = dE2(:).';
-                            data.harmonicRatio.ddE1 = ddE1(:).';
-                            data.harmonicRatio.ddE2 = ddE2(:).';
-                        end
+                        data.harmonicRatio.dE1  = gradient(data.harmonicRatio.E1')';
+                        data.harmonicRatio.dE2  = gradient(data.harmonicRatio.E2')';
+                        data.harmonicRatio.ddE1 = gradient(data.harmonicRatio.dE1')';
+                        data.harmonicRatio.ddE2 = gradient(data.harmonicRatio.dE2')';
+                        % 
+                        % % Use a simple centered derivative for stability
+                        % dtH = 1 / data.harmonicRatio.SampleRate;
+                        % E1 = data.harmonicRatio.E1(:);
+                        % E2 = data.harmonicRatio.E2(:);
+                        % 
+                        % dE1  = gradient(E1, dtH);
+                        % dE2  = gradient(E2, dtH);
+                        % ddE1 = gradient(dE1, dtH);
+                        % ddE2 = gradient(dE2, dtH);
+                        % 
+                        % % Store back as row vectors (to match your plotting expectations)
+                        % data.harmonicRatio.dE1  = dE1(:).';
+                        % data.harmonicRatio.dE2  = dE2(:).';
+                        % data.harmonicRatio.ddE1 = ddE1(:).';
+                        % data.harmonicRatio.ddE2 = ddE2(:).';
                     end
                     [plotdataX, plotdataY, plotdataT,ischanged] = getMeasure(data.plotMeasure(nplot)); % gets measure timeseries (+optional smoothing & thresholding)
                     set(data.handles_otherPlot1(nplot),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
                     if ischanged, set(data.handles_otherThreshold(nplot),'ydata',ischanged+[0 0],'visible','on'); end
+                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, {'Acoustic Velocity', 'Acoustic Acceleration'}), 
+                        tylim1=data.otherYLim(2)*[-1 1]; % adjusts display for variables that have negative values
+                        tylim2=[-1 1]; 
+                    else 
+                        tylim1=data.otherYLim;
+                        tylim2=[0 1]; 
+                    end
                     if isempty(plotdataT)
                         set(data.handles_otherSegments(nplot),'visible','off');
                         data.handles_boundaries{nplot}=[];
                     else 
                         temp=repmat(plotdataX(plotdataT(1:numel(plotdataT)-rem(numel(plotdataT),2))),2,1);
                         temp(:,2:2:end)=flipud(temp(:,2:2:end));
-                        set(data.handles_otherSegments(nplot),'vertices',[temp(:), reshape([0 1; 1 0; 1 0; 0 1]*data.otherYLim'*ones(1,size(temp,2)/2),[],1)], 'faces', reshape(1:2*size(temp,2),4,[])','visible','on');
+                        set(data.handles_otherSegments(nplot),'vertices',[temp(:), reshape([0 1; 1 0; 1 0; 0 1]*tylim1'*ones(1,size(temp,2)/2),[],1)], 'faces', reshape(1:2*size(temp,2),4,[])','visible','on');
                         data.handles_boundaries{nplot}=plotdataX(plotdataT);
                     end
-                    set(data.handles_otherPanel1(nplot),'ylim',[0 1.1*max(plotdataY)],'visible','on');
+                    set(data.handles_otherPanel1(nplot),'ylim',tylim2*1.1*max(abs(plotdataY)),'visible','on');
                     set(data.handles_otherSelectedWindow1(nplot),'visible','on');
                     set([data.handles_otherPanel2(nplot),data.handles_otherPlot2(nplot),data.handles_otherSelectedWindow2(nplot),data.handles_otherSelecetedVideoframe2(nplot)],'visible','off');
                 else % images
@@ -1686,16 +1695,6 @@ function FLvideo(videoFile)
         if isfield(data,'handles_audioCurrentPointText')
             switch option
                 case 'press'
-                    % obsolete: to be removed (this display is instantly changed by the snap-to-# display lines below)
-                    % if data.keydown_isctrlpressed && data.keydown_isshiftpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' CTRL+SHIFT CLICK TO SELECT PEAK ONSET');
-                    % elseif data.keydown_isctrlpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' CTRL CLICK TO ZOOM');
-                    % elseif data.keydown_isshiftpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' SHIFT CLICK TO SELECT CLOSEST PEAK');
-                    % elseif data.keydown_isaltpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' ALT CLICK TO SELECT CLOSEST BOUNDARY');
-                    % end
                 case 'release'
                     set(data.handles_audioCurrentPointText, 'string', '')
             end
