@@ -70,8 +70,8 @@ function FLvideo(videoFile)
         motionHighlight=2;  % default motion highlight: on
         cmapselect=3;       % default colormap: parula
         maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
-        smoothing={0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
-        threshold={.20 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acceleration, HNR)
+        smoothing={0 0 0 0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: as proportion of max smoothing; in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic p-center, acoustic acceleration, acceleration, HNR)
+        threshold={.20 .05 .05 .05 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic p-center, acoustic acceleration, acceleration, HNR)
         videodisplay=2;     % default video-frame behavior: current frame follows mouse motion
         textgridTier=0;
         textgridTier_options={'none'};
@@ -207,10 +207,20 @@ function FLvideo(videoFile)
             %set(hFig, 'name', 'Video Player');
             clf(hFig);
         end
-        data.allPlotMeasures={'Velocity of Movements', 'Acoustic Energy', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)', 'Audio Spectrogram'};
+        data.allPlotMeasures={ ...
+            'Velocity of Movements', ...
+            'Acoustic Energy', ...
+            'Acoustic Velocity', ...
+            'Acoustic p-center', ...
+            'Acoustic Acceleration', ...
+            'Acceleration of Movements', ...
+            'Audio HNR (Harmonic to Noise Ratio)', ...
+            'Audio Spectrogram'};
         
         % Create a panel for the control buttons
         data.handles_hFig = hFig;
+        uicontrol(hFig,'style','pushbutton','units','norm','position',[.95,.95,.05,.05],'string','?','backgroundcolor','w','callback',...
+            @(varargin)uicontrol('units','norm','position',[.1 .1 .8 .8],'style','text','string',{'KEYBOARD SHORTCUTS:',' ','  mouse click : shows time value at the cursor location','  press SHIFT : snaps cursor to closest valley (local minimum) in the plot displayed under the cursor','  press ALT/OPTION : snaps cursor to closest peak (local maximum) in the plot displayed under the cursor','  press <P> : snaps cursor to closest acoustic p-center','  press CTRL + mouse click&drag : selects a window and zoom-in'},'horizontalalignment','left','backgroundcolor','w','parent',figure('units','norm','position',[.4 .4 .5 .2],'name','FLvide help','MenuBar', 'none', 'NumberTitle', 'off', 'color','w')));
         data.handles_buttonPanel = uipanel('Position', [0, 0, 1, 0.15], 'Parent', hFig); % Slightly shorter panel for two rows of buttons
 
         % Top row: Playback buttons
@@ -330,7 +340,16 @@ function FLvideo(videoFile)
                 globalMotionVel=interpft(globalMotionVel,length(audioSignal)); % resample to audio sampling rate (NOTE: sinc interpolation)
                 globalMotionAcc=interpft(globalMotionAcc,length(audioSignal));
                 dataspectrogram=[];
+                dataacousticEnergy=[];
                 dataharmonicRatio=[];
+                hwindowsize=.040; %40ms;
+                [dataacousticEnergy.t,dataacousticEnergy.E1]=acousticEnergy(audioSignal,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs));
+                [dataacousticEnergy.t,dataacousticEnergy.E2]=acousticEnergy(audioSignalDenoised,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs));
+                dataacousticEnergy.dE1  = gradient(dataacousticEnergy.E1')';
+                dataacousticEnergy.dE2  = gradient(dataacousticEnergy.E2')';
+                dataacousticEnergy.ddE1 = gradient(dataacousticEnergy.dE1')';
+                dataacousticEnergy.ddE2 = gradient(dataacousticEnergy.dE2')';
+                dataacousticEnergy.SampleRate=1/median(diff(dataacousticEnergy.t));
                 %globalMotionVel = [globalMotionVel, globalMotionVel(end)]; % Match the length to numFrames
             else
                 globalMotionVel=data.globalMotionVel;
@@ -339,10 +358,11 @@ function FLvideo(videoFile)
                 frameMotionAcc=data.frameMotionAcc;
                 dataspectrogram=data.spectrogram;
                 dataharmonicRatio=data.harmonicRatio;
+                dataacousticEnergy=data.acousticEnergy;
             end
             audioYLim = [-1, 1]*1.1*max(max(abs(audioSignalDenoised(:))),max(abs(audioSignal(:)))); % Get the correct y-limits for the audio signal
-            otherYLim = [0 1.1*max(globalMotionVel)]; % Calculate y-limits for the global motion velocity
-            otherYLim2 = [0 1.1*max(globalMotionAcc)]; % Calculate y-limits for the global motion acceleration
+            otherYLim =  [-1 1]*1.1*max(globalMotionVel); % Calculate y-limits for the global motion velocity
+            otherYLim2 = [-1 1]*1.1*max(globalMotionAcc); % Calculate y-limits for the global motion acceleration
             otherYLim3 = [0 8000];
             otherYLim = [min([otherYLim(1), otherYLim2(1), otherYLim3(1)]), max([otherYLim(2), otherYLim2(2), otherYLim3(2)])];
 
@@ -377,6 +397,8 @@ function FLvideo(videoFile)
                 else set(data.handles_otherPanel1(nplot),'xticklabel',[]);
                 end
                 set(data.handles_otherPanel1(nplot), 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1],'box','off');
+                data.handles_otherScalebutton1(nplot)=uicontrol('Style','pushbutton','string', '-', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 nplot]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_otherPanel1(nplot),'ylim',get(data.handles_otherPanel1(nplot),'ylim').*1.25), 'Parent', hFig);
+                data.handles_otherScalebutton2(nplot)=uicontrol('Style','pushbutton','string', '+', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 nplot]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_otherPanel1(nplot),'ylim',get(data.handles_otherPanel1(nplot),'ylim')./1.25), 'Parent', hFig);
 
                 % Create a dedicated axes for all other plots (for image displays)
                 data.handles_otherPanel2(nplot) = axes('Position', [1 nplot]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Parent', hFig);
@@ -404,6 +426,7 @@ function FLvideo(videoFile)
             % Create a dedicated axes for the audio signal
             data.handles_audioPanel = axes('Position', [1 0]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Parent', hFig); % Move audio panel upward
             data.handles_audioPlot = plot((0:length(audioSignal)-1)/audioFs, audioSignal(:,1), 'b', 'Parent', data.handles_audioPanel); % Plot full audio signal
+            hold(data.handles_audioPanel,'on'); data.handles_audioPlotEnergy = plot(dataacousticEnergy.t,4*dataacousticEnergy.E1, 'k', 'Parent', data.handles_audioPanel); hold(data.handles_audioPanel,'off');
             %data.handles_audioSelectedPoint = patch(data.handles_audioPanel,audioSelectedPoint, audioYLim([1 2 2 1]), 'k', 'edgecolor', 'k', 'facecolor', 'none','linestyle',':'); % Black line for last-clicked mouse position
             data.handles_audioCurrentPoint = patch(data.handles_audioPanel, [0 0 0 0], [0 0 0 0], 'k', 'edgecolor', 'k', 'facecolor', 'none','linestyle',':'); % Black line for mouse position
             data.handles_audioCurrentPointText = text(0,0,'','color','k','horizontalalignment','left','verticalalignment','bottom','parent',data.handles_audioPanel);
@@ -439,6 +462,8 @@ function FLvideo(videoFile)
             if nplots==0, xlabel(data.handles_audioPanel, 'Time (s)');
             else set(data.handles_audioPanel,'xtick',[],'xticklabel',[]);
             end
+            data.handles_audioScalebutton1=uicontrol('Style','pushbutton','string', '-', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 0]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_audioPanel,'ylim',get(data.handles_audioPanel,'ylim').*1.25), 'Parent', hFig);
+            data.handles_audioScalebutton2=uicontrol('Style','pushbutton','string', '+', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 0]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_audioPanel,'ylim',get(data.handles_audioPanel,'ylim')./1.25), 'Parent', hFig);
             data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'string', {'raw Audio Signal','MRI denoised Audio Signal'}, 'Value', audioSignalSelect, 'units','norm','Position', [0.35, 0.5, 0.3, 0.03], 'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', hFig);
 
             % Store information in shared "data" variable
@@ -462,6 +487,7 @@ function FLvideo(videoFile)
             data.globalMotionVel=globalMotionVel;
             data.globalMotionAcc=globalMotionAcc;
             data.spectrogram = dataspectrogram;
+            data.acousticEnergy=dataacousticEnergy;
             data.harmonicRatio = dataharmonicRatio;
             data.textgridLabels = textgridLabels;
             data.motionHighlight = motionHighlight;
@@ -748,14 +774,26 @@ function FLvideo(videoFile)
             case 'Velocity of Movements'
                 data.globalMotionVel_smoothed=[];
             case 'Acoustic Energy', 
-                if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
-                    [data.harmonicRatio.E1_smoothed, data.harmonicRatio.E2_smoothed]=deal([]);
+                if isfield(data,'acousticEnergy')&&~isempty(data.acousticEnergy),
+                    [data.acousticEnergy.E1_smoothed, data.acousticEnergy.E2_smoothed]=deal([]);
                 end
             case 'Acceleration of Movements', 
                 data.globalMotionAcc_smoothed=[];
             case 'Audio HNR (Harmonic to Noise Ratio)'
                 if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
                     [data.harmonicRatio.P1_smoothed, data.harmonicRatio.P2_smoothed]=deal([]);
+                end
+            case 'Acoustic Velocity'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.dE1_smoothed, data.acousticEnergy.dE2_smoothed] = deal([]);
+                end
+            case 'Acoustic p-center'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.pcenter1_smoothed, data.acousticEnergy.pcenter2_smoothed] = deal([]);
+                end
+            case 'Acoustic Acceleration'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.ddE1_smoothed, data.acousticEnergy.ddE2_smoothed] = deal([]);
                 end
         end
         if isfield(data,'globalMotionVel'), 
@@ -781,14 +819,26 @@ function FLvideo(videoFile)
             case 'Velocity of Movements'
                 data.globalMotionVel_thresholded=[];
             case 'Acoustic Energy', 
-                if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
-                    [data.harmonicRatio.E1_thresholded, data.harmonicRatio.E2_thresholded]=deal([]);
+                if isfield(data,'acousticEnergy')&&~isempty(data.acousticEnergy),
+                    [data.acousticEnergy.E1_thresholded, data.acousticEnergy.E2_thresholded]=deal([]);
                 end
             case 'Acceleration of Movements', 
                 data.globalMotionAcc_thresholded=[];
             case 'Audio HNR (Harmonic to Noise Ratio)'
                 if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
                     [data.harmonicRatio.P1_thresholded, data.harmonicRatio.P2_thresholded]=deal([]);
+                end
+            case 'Acoustic Velocity'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.dE1_thresholded, data.acousticEnergy.dE2_thresholded] = deal([]);
+                end
+            case 'Acoustic p-center'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.pcenter1_thresholded, data.acousticEnergy.pcenter2_thresholded] = deal([]);
+                end
+            case 'Acoustic Acceleration'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.ddE1_thresholded, data.acousticEnergy.ddE2_thresholded] = deal([]);
                 end
         end
         if isfield(data,'globalMotionVel'), 
@@ -806,9 +856,12 @@ function FLvideo(videoFile)
         if iscell(data.plotMeasure), data.plotMeasure=[data.plotMeasure{:}]; end
         if isfield(data,'globalMotionVel'), 
             for nplot=1:nplots
-                if ismember(data.allPlotMeasures{data.plotMeasure(nplot)},{'Velocity of Movements', 'Acoustic Energy', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)'}) % plots
-                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)},{'Acoustic Energy', 'Audio HNR (Harmonic to Noise Ratio)'})&&(~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio))
-                        hwindowsize=3/75;
+                if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
+                   {'Velocity of Movements', 'Acoustic Energy', 'Acoustic Velocity', 'Acoustic p-center', 'Acoustic Acceleration', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)'}) % all plots
+                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
+                       {'Audio HNR (Harmonic to Noise Ratio)'}) ...
+                       && (~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio))
+                        hwindowsize=.040; %3/75;
                         [data.harmonicRatio.P1,data.harmonicRatio.t,data.harmonicRatio.E1]=harmonicRatio(data.audioSignalRaw,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                         [data.harmonicRatio.P2,data.harmonicRatio.t,data.harmonicRatio.E2]=harmonicRatio(data.audioSignalDen,data.SampleRate,round(hwindowsize*data.SampleRate),round((hwindowsize-.001)*data.SampleRate), 0.10);
                         data.harmonicRatio.E1 = sqrt(max(0,data.harmonicRatio.E1)); % MS to RMS
@@ -817,19 +870,32 @@ function FLvideo(videoFile)
                         data.harmonicRatio.P2 = -10*log10(1e-1)+10*log10(max(1e-1,data.harmonicRatio.P2./max(eps,1-data.harmonicRatio.P2))); % HR to HNR
                         data.harmonicRatio.SampleRate=1/median(diff(data.harmonicRatio.t));
                     end
+                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
+                       {'Acoustic p-center'}) ...
+                       && (~isfield(data,'acousticEnergy')||~isfield(data.acousticEnergy,'pcenter_t')||isempty(data.acousticEnergy.pcenter_t))
+                        [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter1] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalRaw);
+                        [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter2] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalDen);
+                    end
                     [plotdataX, plotdataY, plotdataT,ischanged] = getMeasure(data.plotMeasure(nplot)); % gets measure timeseries (+optional smoothing & thresholding)
                     set(data.handles_otherPlot1(nplot),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
                     if ischanged, set(data.handles_otherThreshold(nplot),'ydata',ischanged+[0 0],'visible','on'); end
+                    if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, {'Acoustic Velocity', 'Acoustic p-center', 'Acoustic Acceleration'}), 
+                        tylim1=data.otherYLim(2)*[-1 1]; % adjusts display for variables that have negative values
+                        tylim2=[-1 1]; 
+                    else 
+                        tylim1=data.otherYLim;
+                        tylim2=[0 1]; 
+                    end
                     if isempty(plotdataT)
                         set(data.handles_otherSegments(nplot),'visible','off');
                         data.handles_boundaries{nplot}=[];
                     else 
                         temp=repmat(plotdataX(plotdataT(1:numel(plotdataT)-rem(numel(plotdataT),2))),2,1);
                         temp(:,2:2:end)=flipud(temp(:,2:2:end));
-                        set(data.handles_otherSegments(nplot),'vertices',[temp(:), reshape([0 1; 1 0; 1 0; 0 1]*data.otherYLim'*ones(1,size(temp,2)/2),[],1)], 'faces', reshape(1:2*size(temp,2),4,[])','visible','on');
+                        set(data.handles_otherSegments(nplot),'vertices',[temp(:), reshape([0 1; 1 0; 1 0; 0 1]*tylim1'*ones(1,size(temp,2)/2),[],1)], 'faces', reshape(1:2*size(temp,2),4,[])','visible','on');
                         data.handles_boundaries{nplot}=plotdataX(plotdataT);
                     end
-                    set(data.handles_otherPanel1(nplot),'ylim',[0 1.1*max(plotdataY)],'visible','on');
+                    set(data.handles_otherPanel1(nplot),'ylim',tylim2*1.1*max(abs(plotdataY)),'visible','on');
                     set(data.handles_otherSelectedWindow1(nplot),'visible','on');
                     set([data.handles_otherPanel2(nplot),data.handles_otherPlot2(nplot),data.handles_otherSelectedWindow2(nplot),data.handles_otherSelecetedVideoframe2(nplot)],'visible','off');
                 else % images
@@ -873,17 +939,35 @@ function FLvideo(videoFile)
                 SampleRate=data.SampleRate; 
                 plotdataX = []; 
             case 'Acoustic Energy', 
-                if data.audioSignalSelect==1, fieldname='harmonicRatio.E1'; 
-                else fieldname='harmonicRatio.E2'; 
+                if data.audioSignalSelect==1, fieldname='acousticEnergy.E1'; 
+                else fieldname='acousticEnergy.E2'; 
                 end
-                SampleRate=data.harmonicRatio.SampleRate; 
-                plotdataX = data.harmonicRatio.t;
+                SampleRate=data.acousticEnergy.SampleRate; 
+                plotdataX = data.acousticEnergy.t;
             case 'Audio HNR (Harmonic to Noise Ratio)', 
                 if data.audioSignalSelect==1, fieldname='harmonicRatio.P1'; 
                 else fieldname='harmonicRatio.P2'; 
                 end
                 SampleRate=data.harmonicRatio.SampleRate; 
                 plotdataX = data.harmonicRatio.t;
+            case 'Acoustic Velocity'
+                if data.audioSignalSelect==1, fieldname='acousticEnergy.dE1';
+                else                         fieldname='acousticEnergy.dE2';
+                end
+                SampleRate = data.acousticEnergy.SampleRate;
+                plotdataX  = data.acousticEnergy.t;
+            case 'Acoustic p-center'
+                if data.audioSignalSelect==1, fieldname='acousticEnergy.pcenter1';
+                else                         fieldname='acousticEnergy.pcenter2';
+                end
+                SampleRate = 1000; % note: matched to hopDurE = 0.001 in flvideo_estimateacousticpcenter
+                plotdataX  = data.acousticEnergy.pcenter_t;
+            case 'Acoustic Acceleration'
+                if data.audioSignalSelect==1, fieldname='acousticEnergy.ddE1';
+                else                         fieldname='acousticEnergy.ddE2';
+                end
+                SampleRate = data.acousticEnergy.SampleRate;
+                plotdataX  = data.acousticEnergy.t;
         end
         fieldname_smoothed=[fieldname,'_smoothed'];
         fieldname_thresholded=[fieldname,'_thresholded'];
@@ -918,9 +1002,11 @@ function FLvideo(videoFile)
             if data.audioSignalSelect==1, 
                 data.audioSignal = data.audioSignalRaw; % raw audio
                 data.audioPlayer = data.audioPlayer1;
+                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',4*data.acousticEnergy.E1);
             else,                   
                 data.audioSignal = data.audioSignalDen; % denoised audio
                 data.audioPlayer = data.audioPlayer2;
+                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',4*data.acousticEnergy.E2);
             end
             set(data.handles_audioPlot,'ydata',data.audioSignal(:,1));  
             set(data.handles_audioPanel,'ylim',data.audioYLim); 
@@ -943,10 +1029,14 @@ function FLvideo(videoFile)
                 set(data.handles_buttonPanel, 'Position', [0, 0, 1, 0.15]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.55, 1, 0.4]);
                 set(data.handles_audioPanel,'Position', [1 0]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
+                set(data.handles_audioScalebutton1,'position',[1 0]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
+                set(data.handles_audioScalebutton2,'position',[1 0]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
                 set(data.handles_audiosignal,'Position',[0.35, 0.5, 0.3, 0.025]);
                 for nplot=1:nplots, 
                     set(data.handles_otherPanel1(nplot), 'Position', [1 nplot]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
                     set(data.handles_otherPanel2(nplot), 'Position', [1 nplot]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
+                    set(data.handles_otherScalebutton1(nplot),'position',[1 nplot]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
+                    set(data.handles_otherScalebutton2(nplot),'position',[1 nplot]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0]);
                     set(data.handles_plotmeasure(nplot),'Position',[1 nplot]*[0.35, 0.5, 0.3, .025; 0  -0.30*1.5/(1+nplots*1.5) 0 0]);
                 end
                 set(data.handles_plotmeasure_add,'Position', [0.91, 0.5-0.30, 0.04, 0.04]);
@@ -957,10 +1047,14 @@ function FLvideo(videoFile)
                 set(data.handles_buttonPanel, 'Position', [0.575, 0.025, 0.4, 0.13]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.0, 0.54, 1]);
                 set(data.handles_audioPanel,'Position', [1 0]*[0.575, 0.95-0.75/(1+nplots*1.25), 0.4, 0.75/(1+nplots*1.25); 0 -0.75*1.25/(1+nplots*1.25) 0 0]);
+                set(data.handles_audioScalebutton1,'position',[1 0]*[0.545, 0.95-0.75/(1+nplots*1.25), 0.015, 0.75/(1+nplots*1.5)/2; 0 -0.75*1.25/(1+nplots*1.5) 0 0]);
+                set(data.handles_audioScalebutton2,'position',[1 0]*[0.545, 0.95-0.375/(1+nplots*1.25), 0.015, 0.75/(1+nplots*1.5)/2; 0 -0.75*1.25/(1+nplots*1.5) 0 0]);
                 set(data.handles_audiosignal,'Position',[0.575, 0.95, 0.4, 0.02]);
                 for nplot=1:nplots, 
                     set(data.handles_otherPanel1(nplot), 'Position', [1 nplot]*[0.575, 0.95-0.75/(1+nplots*1.25), 0.4, 0.75/(1+nplots*1.25); 0 -0.75*1.25/(1+nplots*1.25) 0 0]);
                     set(data.handles_otherPanel2(nplot), 'Position', [1 nplot]*[0.575, 0.95-0.75/(1+nplots*1.25), 0.4, 0.75/(1+nplots*1.25); 0 -0.75*1.25/(1+nplots*1.25) 0 0]);
+                    set(data.handles_otherScalebutton1(nplot),'position',[1 nplot]*[0.545, 0.95-0.75/(1+nplots*1.25), 0.015, 0.75/(1+nplots*1.25)/2; 0 -0.75*1.25/(1+nplots*1.25) 0 0]);
+                    set(data.handles_otherScalebutton2(nplot),'position',[1 nplot]*[0.545, 0.95-0.375/(1+nplots*1.25), 0.015, 0.75/(1+nplots*1.25)/2; 0 -0.75*1.25/(1+nplots*1.25) 0 0]);
                     set(data.handles_plotmeasure(nplot),'Position',[1 nplot]*[0.575, 0.95, 0.4, .02; 0  -0.75*1.25/(1+nplots*1.25) 0 0]);
                 end
                 set(data.handles_plotmeasure_add,'Position', [0.978, 0.95-0.75, 0.02, 0.04]);
@@ -971,10 +1065,14 @@ function FLvideo(videoFile)
                 set(data.handles_buttonPanel, 'Position', [.25, 0, .5, 0.13]);
                 set(data.handles_videoPanel,'Position', [0.0, 0.4, 1, 0.6]);
                 set(data.handles_audioPanel,'Position', [1 0]*[0.25, 0.35-0.175/(1+nplots*1.0), 0.5, 0.175/(1+nplots*1.0); 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
+                set(data.handles_audioScalebutton1,'position',[1 0]*[0.25-.04, 0.35-0.175/(1+nplots*1.0), 0.025, 0.175/(1+nplots*1.0)/2; 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
+                set(data.handles_audioScalebutton2,'position',[1 0]*[0.25-.04, 0.35-0.0875/(1+nplots*1.0), 0.025, 0.175/(1+nplots*1.0)/2; 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
                 set(data.handles_audiosignal,'Position',[1 0]*[0.05, 0.35-.015-0.175/(1+nplots*1.0)/2, 0.15, 0.03; 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
                 for nplot=1:nplots, 
                     set(data.handles_otherPanel1(nplot), 'Position', [1 nplot]*[0.25, 0.35-0.175/(1+nplots*1.0), 0.5, 0.175/(1+nplots*1.0); 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
                     set(data.handles_otherPanel2(nplot), 'Position', [1 nplot]*[0.25, 0.35-0.175/(1+nplots*1.0), 0.5, 0.175/(1+nplots*1.0); 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
+                    set(data.handles_otherScalebutton1(nplot),'position',[1 nplot]*[0.25-.04, 0.35-0.175/(1+nplots*1.0), 0.025, 0.175/(1+nplots*1.0)/2; 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
+                    set(data.handles_otherScalebutton2(nplot),'position',[1 nplot]*[0.25-.04, 0.35-0.0875/(1+nplots*1.0), 0.025, 0.175/(1+nplots*1.0)/2; 0 -0.175*1.0/(1+nplots*1.0) 0 0]);
                     set(data.handles_plotmeasure(nplot),'Position',[1 nplot]*[0.05, 0.35-.015-0.175/(1+nplots*1.0)/2, 0.15, .03; 0  -0.175*1.0/(1+nplots*1.0) 0 0]);
                 end
                 set(data.handles_plotmeasure_add,'Position', [0.76, 0.35-0.175, 0.02, 0.04]);
@@ -1261,6 +1359,17 @@ function FLvideo(videoFile)
         fprintf('%s copied to clipboard\n',str);
     end
 
+    function refTime=flvideo_findlocalminimum(in_ref,refTime)
+        if in_ref==1, xdata=get(data.handles_audioPlot,{'xdata','ydata'});
+        else xdata=get(data.handles_otherPlot1(in_ref-1),{'xdata','ydata'});
+        end
+        idx1=1+find(xdata{2}(2:end-1)<xdata{2}(1:end-2) & xdata{2}(2:end-1)<=xdata{2}(3:end));
+        if ~isempty(idx1)
+            [nill,idx2]=min(abs(xdata{1}(idx1)-refTime));
+            refTime=xdata{1}(idx1(idx2));
+        end
+    end
+
     function refTime=flvideo_findlocalmaximum(in_ref,refTime)
         if in_ref==1, xdata=get(data.handles_audioPlot,{'xdata','ydata'});
         else xdata=get(data.handles_otherPlot1(in_ref-1),{'xdata','ydata'});
@@ -1272,48 +1381,124 @@ function FLvideo(videoFile)
         end
     end
 
-    function refTime = flvideo_findpeakstart(in_ref, refTime)
-        if in_ref == 1
-            xdata = get(data.handles_audioPlot, {'xdata', 'ydata'});
-        else
-            xdata = get(data.handles_otherPlot1(in_ref - 1), {'xdata', 'ydata'});
+    function refTime = flvideo_findacousticpcenter(in_ref, refTime) % Acoustic p center (SHIFT)
+        x = data.acousticEnergy.pcenter_t;
+        if data.audioSignalSelect==1, y = data.acousticEnergy.pcenter1;
+        else y = data.acousticEnergy.pcenter2;
         end
-        x = xdata{1};
-        y = xdata{2};
-    
-        if numel(y) >= 3
-            idxCandidates = 1 + find( y(2:end-1) < y(1:end-2) & y(2:end-1) <= y(3:end) );
-        else
-            idxCandidates = [];
-        end
-    
-        if ~isempty(idxCandidates)
-            [~, k] = min(abs(x(idxCandidates) - refTime));
-            refTime = x(idxCandidates(k));
+        idx1=1+find(y(2:end-1)>y(1:end-2) & y(2:end-1)>=y(3:end));
+        if ~isempty(idx1)
+            [nill,idx2]=min(abs(x(idx1)-refTime));
+            refTime=x(idx1(idx2));
         end
     end
 
-    function flvideo_keyfcn(option, varargin)
+    function [tE,dE_m] = flvideo_estimateacousticpcenter(t,y) % Acoustic p center (SHIFT)
+        % Acoustic P-center based on Rathcke et al. (JASA 2024):
+        %   1) short-time ENERGY contour (40 ms window, 1 ms hop)
+        %   2) smooth energy
+        %   3) energy difference function dE(t)=E(t)-E(t-1) (velocity of energy)
+        %   4) suppress fricative-like frames via ZCR > 4000 (mask those frames)
+        %   5) P-center = time of MAX dE within a local search window around refTime
+        %
+        % Notes:
+        % - The paper selects max dE within syllable boundaries. In your GUI workflow,
+        %   we don't have syllable boundaries here, so we use a "snap/search window"
+        %   around the incoming refTime (consistent with how your current function works).
+        % - Keeps your variable patterns and early-return behavior.
+    
+        if numel(t) < 10 || numel(y) < 10 || numel(t) ~= numel(y)
+            return;
+        end
+    
+        % ---- 2) Basic timing ----
+        dt = mean(diff(t));
+        if ~isfinite(dt) || dt <= 0
+            return;
+        end
+    
+        % Treat as uniformly sampled
+        fs = 1 / dt;
+    
+        % ---- 3) Paper parameters (mapped to samples on your t-grid) ----
+        winDurE = 0.040;   % 40 ms energy window
+        hopDurE = 0.001;   % 1 ms hop (energy sampled every 1 ms)
+    
+        winSampE = max(3, round(winDurE / dt));
+        hopSampE = max(1, round(hopDurE / dt));
+    
+        if winSampE >= numel(y)
+            return;
+        end
+    
+        % Paper describes smoothing "order 6" for energy and "order 10" for dE.
+        % Interpret as short moving-average lengths.
+        smoothLenE  = 6;
+        smoothLendE = 10;
+    
+        % ZCR threshold for fricative-like regions (crossings per second)
+        zcrThr = 4000;
+    
+        % ---- 4) Compute short-time ENERGY contour E(t) ----
+        % We'll compute frame energies at frame CENTER times.
+        n = numel(y);
+        startIdx = 1:hopSampE:(n - winSampE + 1);
+        nFrames  = numel(startIdx);
+    
+        E  = zeros(nFrames, 1);
+        Z  = zeros(nFrames, 1);   % ZCR (crossings/s)
+        tE = zeros(nFrames, 1);
+    
+        for k = 1:nFrames
+            i0 = startIdx(k);
+            i1 = i0 + winSampE - 1;
+    
+            frame = y(i0:i1);
+    
+            % Energy: mean squared amplitude (scale-invariant vs sum)
+            E(k) = mean(frame.^2);
+    
+            % Zero crossing rate: count sign changes / sec
+            s = sign(frame);
+            s(s == 0) = 1; % treat exact zeros as positive to avoid extra crossings
+            crossings = sum(abs(diff(s)) > 0);
+            Z(k) = crossings / (winSampE / fs);
+    
+            % Frame center time
+            centerIdx = i0 + floor((winSampE - 1) / 2);
+            tE(k) = t(centerIdx);
+        end
+    
+        if all(~isfinite(E)) || max(E) <= 0
+            return;
+        end
+    
+        % ---- 5) Smooth energy contour ----
+        E_s = movmean(E, smoothLenE, 'Endpoints','shrink');
+    
+        % ---- 6) Energy difference function (velocity of energy) + smoothing ----
+        dE = [0; diff(E_s)];
+        dE_s = movmean(dE, smoothLendE, 'Endpoints','shrink');
+    
+        % ---- 7) Mask fricative-like frames via ZCR threshold ----
+        % Paper: disregard samples where ZCR > 4000.
+        dE_m = dE_s;
+        dE_m(Z > zcrThr) = nan;
+    end
+
+    function flvideo_keyfcn(option, src, event, varargin)
         % Get current modifier keys' states
         mdf = get(data.handles_hFig, 'currentmodifier');
         data.keydown_isctrlpressed = ismember('control', mdf); % CTRL-click to zoom in/out
         data.keydown_isshiftpressed = ismember('shift', mdf);  % SHIFT-click to snap-to-peak
         data.keydown_isaltpressed = ismember('alt', mdf);      % ALT-click to snap-to-valley, SHIFT-ALT-click to snap-to-boundary
+        if ~isfield(data,'keydown_iskeypressed'), data.keydown_iskeypressed=false; end
+        if isequal(event.Key,'p'), data.keydown_iskeypressed=isequal(option,'press'); end
     
         % Update GUI text instructions based on key press state
         if isfield(data,'handles_audioCurrentPointText')
             switch option
                 case 'press'
-                    % obsolete: to be removed (this display is instantly changed by the snap-to-# display lines below)
-                    % if data.keydown_isctrlpressed && data.keydown_isshiftpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' CTRL+SHIFT CLICK TO SELECT PEAK ONSET');
-                    % elseif data.keydown_isctrlpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' CTRL CLICK TO ZOOM');
-                    % elseif data.keydown_isshiftpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' SHIFT CLICK TO SELECT CLOSEST PEAK');
-                    % elseif data.keydown_isaltpressed
-                    %     set(data.handles_audioCurrentPointText, 'string', ' ALT CLICK TO SELECT CLOSEST BOUNDARY');
-                    % end
                 case 'release'
                     set(data.handles_audioCurrentPointText, 'string', '')
             end
@@ -1333,6 +1518,7 @@ function FLvideo(videoFile)
         if ~isfield(data,'keydown_isctrlpressed'), data.keydown_isctrlpressed=0; end
         if ~isfield(data,'keydown_isshiftpressed'), data.keydown_isshiftpressed=0; end
         if ~isfield(data,'keydown_isaltpressed'), data.keydown_isaltpressed=0; end
+        if ~isfield(data,'keydown_iskeypressed'), data.keydown_iskeypressed=0; end
         p1=get(0,'pointerlocation');
         set(gcbf,'units','pixels');
         p2=get(gcbf,'position');
@@ -1380,7 +1566,7 @@ function FLvideo(videoFile)
         if all(pos_audio(1:2)>data.handles_audioSelectedWindowText3_extent(1:2) & pos_audio(1:2)-data.handles_audioSelectedWindowText3_extent(1:2)<data.handles_audioSelectedWindowText3_extent(3:4)),   in_text=data.handles_audioSelectedWindowText3; set(data.handles_audioSelectedWindowText3,'backgroundcolor',[.85 .85 .85]);  else set(data.handles_audioSelectedWindowText3,'backgroundcolor','none'); end
 
         if in_ref % when mouse is on any plot
-            if data.keydown_isaltpressed && data.keydown_isshiftpressed % snap-to-boundary
+            if data.keydown_isaltpressed && data.keydown_isshiftpressed % PRESS ALT+SHIFT: snap-to-boundary
                 if in_ref==1&&~isempty(in_interval)
                     if pos_audio(1)-data.textgridLabels(data.textgridTier).intervals(1,in_interval) < data.textgridLabels(data.textgridTier).intervals(2,in_interval)-pos_audio(1), refTime=data.textgridLabels(data.textgridTier).intervals(1,in_interval);
                     else refTime=data.textgridLabels(data.textgridTier).intervals(2,in_interval);
@@ -1389,10 +1575,12 @@ function FLvideo(videoFile)
                     [nill,idx]=min(abs(refTime-data.handles_boundaries{in_ref-1}));
                     refTime=data.handles_boundaries{in_ref-1}(idx);
                 end
-            elseif data.keydown_isshiftpressed % Snap to valley (min)
-                refTime = flvideo_findpeakstart(in_ref, refTime);
-            elseif data.keydown_isaltpressed, % Snap to peak (max)
+            elseif data.keydown_isshiftpressed % PRESS SHIFT: snap to valley (min)
+                refTime = flvideo_findlocalminimum(in_ref, refTime);
+            elseif data.keydown_isaltpressed, % PRESS ALT: snap to peak (max)
                 refTime = flvideo_findlocalmaximum(in_ref, refTime);
+            elseif data.keydown_iskeypressed % PRESS P: snap to acoustic energy p-center
+                refTime = flvideo_findacousticpcenter(in_ref, refTime);
             end
 
             % show timepoint line
@@ -1403,6 +1591,7 @@ function FLvideo(videoFile)
             elseif data.keydown_isaltpressed && data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST BOUNDARY',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
             elseif data.keydown_isshiftpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST VALLEY', refTime), 'position', [refTime, data.audioYLim * [1; 0]]);
             elseif data.keydown_isaltpressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST PEAK',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
+            elseif data.keydown_iskeypressed, set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s CLOSEST ACOUSTIC P-CENTER',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
             %elseif data.keydown_isshiftpressed&&in_ref==1, set(data.handles_audioCurrentPointText, 'string', 'audio signal local maximum', 'position', [refTime, data.audioYLim*[1;0]]);
             %elseif data.keydown_isshiftpressed&&in_ref>1, set(data.handles_audioCurrentPointText, 'string', sprintf('%s local maximum',data.allPlotMeasures{in_ref-1}), 'position', [refTime, data.audioYLim*[1;0]]);
             else set(data.handles_audioCurrentPointText, 'string', sprintf(' t = %.3f s',refTime), 'position', [refTime, data.audioYLim*[1;0]]);
@@ -1735,6 +1924,17 @@ else,%odd
    w = [w; flipud(w(1:end-1))];
 end
 if nargin>1&&~isempty(normed)&&normed>0, w=w/sum(w); end
+end
+
+function [t0,e]=acousticEnergy(s,fs,windowlength,overlaplength)
+if nargin<3||isempty(windowlength), windowlength=round(4.5/75*fs); end % from Praat: 4.5 times the minimum pitch (75Hz)
+if nargin<4||isempty(overlaplength), overlaplength=windowlength-max(1,round(0.001*fs)); end
+s2=flvoice_samplewindow(s(:),windowlength,overlaplength,'none','tight');
+Nt=size(s2,2);
+hwindow=flvoice_hanning(windowlength);
+s2=s2.*repmat(hwindow,[1,Nt]);
+t0=(windowlength/2+(windowlength-overlaplength)*(0:Nt-1)')/fs; % note: time of middle sample within window
+e=sqrt(mean(s2.^2,1))';
 end
 
 function [w,t0,e]=harmonicRatio(s,fs,windowlength,overlaplength,ampthr)
