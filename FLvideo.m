@@ -342,7 +342,7 @@ function FLvideo(videoFile)
                 dataspectrogram=[];
                 dataacousticEnergy=[];
                 dataharmonicRatio=[];
-                hwindowsize=.065; %65ms;
+                hwindowsize=.040; %40ms;
                 [dataacousticEnergy.t,dataacousticEnergy.E1]=acousticEnergy(audioSignal,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs));
                 [dataacousticEnergy.t,dataacousticEnergy.E2]=acousticEnergy(audioSignalDenoised,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs));
                 dataacousticEnergy.dE1  = gradient(dataacousticEnergy.E1')';
@@ -426,7 +426,7 @@ function FLvideo(videoFile)
             % Create a dedicated axes for the audio signal
             data.handles_audioPanel = axes('Position', [1 0]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Parent', hFig); % Move audio panel upward
             data.handles_audioPlot = plot((0:length(audioSignal)-1)/audioFs, audioSignal(:,1), 'b', 'Parent', data.handles_audioPanel); % Plot full audio signal
-            hold(data.handles_audioPanel,'on'); data.handles_audioPlotEnergy = plot(dataacousticEnergy.t,3*dataacousticEnergy.E1, 'k', 'Parent', data.handles_audioPanel); hold(data.handles_audioPanel,'off');
+            hold(data.handles_audioPanel,'on'); data.handles_audioPlotEnergy = plot(dataacousticEnergy.t,4*dataacousticEnergy.E1, 'k', 'Parent', data.handles_audioPanel); hold(data.handles_audioPanel,'off');
             %data.handles_audioSelectedPoint = patch(data.handles_audioPanel,audioSelectedPoint, audioYLim([1 2 2 1]), 'k', 'edgecolor', 'k', 'facecolor', 'none','linestyle',':'); % Black line for last-clicked mouse position
             data.handles_audioCurrentPoint = patch(data.handles_audioPanel, [0 0 0 0], [0 0 0 0], 'k', 'edgecolor', 'k', 'facecolor', 'none','linestyle',':'); % Black line for mouse position
             data.handles_audioCurrentPointText = text(0,0,'','color','k','horizontalalignment','left','verticalalignment','bottom','parent',data.handles_audioPanel);
@@ -1002,11 +1002,11 @@ function FLvideo(videoFile)
             if data.audioSignalSelect==1, 
                 data.audioSignal = data.audioSignalRaw; % raw audio
                 data.audioPlayer = data.audioPlayer1;
-                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',3*data.acousticEnergy.E1);
+                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',4*data.acousticEnergy.E1);
             else,                   
                 data.audioSignal = data.audioSignalDen; % denoised audio
                 data.audioPlayer = data.audioPlayer2;
-                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',3*data.acousticEnergy.E2);
+                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',4*data.acousticEnergy.E2);
             end
             set(data.handles_audioPlot,'ydata',data.audioSignal(:,1));  
             set(data.handles_audioPanel,'ylim',data.audioYLim); 
