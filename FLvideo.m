@@ -247,12 +247,12 @@ function FLvideo(videoFile)
         uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [440, 90, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [550, 90, 180, 25], ...
+        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [440, 94, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [550, 94, 180, 25], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Display Labels', 'Position', [440, 65, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_textgridtier=uicontrol('Style', 'popupmenu', 'string', textgridTier_options, 'Value', textgridTier+1, 'tooltip','Selects tier to display from TextGrid labels file (if a .TextGrid file associated with the current .mp4 file exists)', 'Position', [550, 65, 180, 25], ...
+        uicontrol('Style', 'text', 'String', 'Display Labels', 'Position', [440, 67, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_textgridtier=uicontrol('Style', 'popupmenu', 'string', textgridTier_options, 'Value', textgridTier+1, 'tooltip','Selects tier to display from TextGrid labels file (if a .TextGrid file associated with the current .mp4 file exists)', 'Position', [550, 67, 180, 25], ...
             'Callback', @(src, event) changeTextgridTier(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
         data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'tooltip', 'Select the desired GUI layout', 'Position', [550, 15, 180, 25], ...
@@ -427,7 +427,7 @@ function FLvideo(videoFile)
             % Create a dedicated axes for the audio signal
             data.handles_audioPanel = axes('Position', [1 0]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Parent', hFig); % Move audio panel upward
             data.handles_audioPlot = plot((0:length(audioSignal)-1)/audioFs, audioSignal(:,1), 'b', 'Parent', data.handles_audioPanel); % Plot full audio signal
-            hold(data.handles_audioPanel,'on'); data.handles_audioPlotEnergy = plot(dataacousticEnergy.t,4*dataacousticEnergy.E1, 'k', 'Parent', data.handles_audioPanel); hold(data.handles_audioPanel,'off');
+            hold(data.handles_audioPanel,'on'); data.handles_audioPlotEnergy = plot(dataacousticEnergy.t,5*dataacousticEnergy.E1, 'k', 'Parent', data.handles_audioPanel); hold(data.handles_audioPanel,'off');
             %data.handles_audioSelectedPoint = patch(data.handles_audioPanel,audioSelectedPoint, audioYLim([1 2 2 1]), 'k', 'edgecolor', 'k', 'facecolor', 'none','linestyle',':'); % Black line for last-clicked mouse position
             data.handles_audioCurrentPoint = patch(data.handles_audioPanel, [0 0 0 0], [0 0 0 0], 'k', 'edgecolor', 'k', 'facecolor', 'none','linestyle',':'); % Black line for mouse position
             data.handles_audioCurrentPointText = text(0,0,'','color','k','horizontalalignment','left','verticalalignment','bottom','parent',data.handles_audioPanel);
@@ -1020,11 +1020,11 @@ function FLvideo(videoFile)
             if data.audioSignalSelect==1, 
                 data.audioSignal = data.audioSignalRaw; % raw audio
                 data.audioPlayer = data.audioPlayer1;
-                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',4*data.acousticEnergy.E1);
+                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',5*data.acousticEnergy.E1);
             else,                   
                 data.audioSignal = data.audioSignalDen; % denoised audio
                 data.audioPlayer = data.audioPlayer2;
-                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',4*data.acousticEnergy.E2);
+                set(data.handles_audioPlotEnergy,'xdata',data.acousticEnergy.t,'ydata',5*data.acousticEnergy.E2);
             end
             set(data.handles_audioPlot,'ydata',data.audioSignal(:,1));  
             set(data.handles_audioPanel,'ylim',data.audioYLim); 
