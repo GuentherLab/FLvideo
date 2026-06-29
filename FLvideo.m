@@ -70,8 +70,8 @@ function FLvideo(videoFile)
         motionHighlight=2;  % default motion highlight: on
         cmapselect=3;       % default colormap: parula
         maxsmoothing=0.200; % maximum smoothing (in seconds, hanning window length)
-        smoothing={0 0 0 0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: as proportion of max smoothing; in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic p-center, acoustic acceleration, acceleration, HNR)
-        threshold={.20 .05 .05 .05 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic p-center, acoustic acceleration, acceleration, HNR)
+        smoothing={0 0 0 0 0 0 0 0};  % default temporal smoothing: 0ms hanning window (note: as proportion of max smoothing; in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic p-center, acoustic zero-crossings, acoustic acceleration, acceleration, HNR)
+        threshold={.20 .05 .05 0 0 .05 .20 .05};  % default height threshold (in percent of max units) (note: in the same order as data.allPlotMeasures: velocity of motion, acoustic energy, acoustic velocity, acoustic p-center, acoustic zero-crossings, acoustic acceleration, acceleration, HNR)
         videodisplay=2;     % default video-frame behavior: current frame follows mouse motion
         textgridTier=0;
         textgridTier_options={'none'};
@@ -212,6 +212,7 @@ function FLvideo(videoFile)
             'Acoustic Energy', ...
             'Acoustic Velocity', ...
             'Acoustic p-center', ...
+            'Acoustic zero-crossings', ...
             'Acoustic Acceleration', ...
             'Acceleration of Movements', ...
             'Audio HNR (Harmonic to Noise Ratio)', ...
@@ -220,7 +221,7 @@ function FLvideo(videoFile)
         % Create a panel for the control buttons
         data.handles_hFig = hFig;
         uicontrol(hFig,'style','pushbutton','units','norm','position',[.95,.95,.05,.05],'string','?','backgroundcolor','w','callback',...
-            @(varargin)uicontrol('units','norm','position',[.1 .1 .8 .8],'style','text','string',{'KEYBOARD SHORTCUTS:',' ','  mouse click : shows time value at the cursor location','  press SHIFT : snaps cursor to closest valley (local minimum) in the plot displayed under the cursor','  press ALT/OPTION : snaps cursor to closest peak (local maximum) in the plot displayed under the cursor','  press <P> : snaps cursor to closest acoustic p-center','  press CTRL + mouse click&drag : selects a window and zoom-in'},'horizontalalignment','left','backgroundcolor','w','parent',figure('units','norm','position',[.4 .4 .5 .2],'name','FLvide help','MenuBar', 'none', 'NumberTitle', 'off', 'color','w')));
+            @(varargin)uicontrol('units','norm','position',[.1 .1 .8 .8],'style','text','string',{'KEYBOARD SHORTCUTS:',' ','  mouse click : shows time value at the cursor location','  mouse click & drag : selects time window and zoom-in', '  press SHIFT : snaps cursor to closest valley (local minimum) in the plot displayed under the cursor','  press ALT/OPTION : snaps cursor to closest peak (local maximum) in the plot displayed under the cursor','  press <P> : snaps cursor to closest acoustic p-center','  press CTRL + mouse click&drag : zoom in & out in all plots'},'horizontalalignment','left','backgroundcolor','w','parent',figure('units','norm','position',[.4 .4 .5 .2],'name','FLvide help','MenuBar', 'none', 'NumberTitle', 'off', 'color','w')));
         data.handles_buttonPanel = uipanel('Position', [0, 0, 1, 0.15], 'Parent', hFig); % Slightly shorter panel for two rows of buttons
 
         % Top row: Playback buttons
@@ -246,25 +247,25 @@ function FLvideo(videoFile)
         uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [440, 80, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [550, 80, 180, 20], ...
+        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [440, 90, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [550, 90, 180, 25], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Display Labels', 'Position', [440, 60, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_textgridtier=uicontrol('Style', 'popupmenu', 'string', textgridTier_options, 'Value', textgridTier+1, 'tooltip','Selects tier to display from TextGrid labels file (if a .TextGrid file associated with the current .mp4 file exists)', 'Position', [550, 60, 180, 20], ...
+        uicontrol('Style', 'text', 'String', 'Display Labels', 'Position', [440, 65, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_textgridtier=uicontrol('Style', 'popupmenu', 'string', textgridTier_options, 'Value', textgridTier+1, 'tooltip','Selects tier to display from TextGrid labels file (if a .TextGrid file associated with the current .mp4 file exists)', 'Position', [550, 65, 180, 25], ...
             'Callback', @(src, event) changeTextgridTier(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
-        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'tooltip', 'Select the desired GUI layout', 'Position', [550, 18, 180, 20], ...
+        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'tooltip', 'Select the desired GUI layout', 'Position', [550, 15, 180, 25], ...
             'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel, 'visible','off');
         
-        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'tooltip', 'Select colormap used when displaying the audio spectrogram', 'Position', [550, 18, 180, 20], ...
+        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'tooltip', 'Select colormap used when displaying the audio spectrogram', 'Position', [550, 15, 180, 25], ...
             'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel, 'visible','off');
         
         smoothingnames={};
         for nsmoothing=1:numel(smoothing)
-            data.handles_smoothingEdit(nsmoothing)=uicontrol('Style', 'edit', 'string', mat2str(round(1000*maxsmoothing*smoothing{nsmoothing})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [730, 18, 40, 20], ...
+            data.handles_smoothingEdit(nsmoothing)=uicontrol('Style', 'edit', 'string', mat2str(round(1000*maxsmoothing*smoothing{nsmoothing})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [730, 15, 40, 25], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
-            data.handles_smoothing(nsmoothing)=uicontrol('Style', 'slider', 'Value', smoothing{nsmoothing}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [550, 18, 180, 20], ...
+            data.handles_smoothing(nsmoothing)=uicontrol('Style', 'slider', 'Value', smoothing{nsmoothing}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [550, 15, 180, 25], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing), 'Parent', data.handles_buttonPanel, 'visible','off');
             try, addlistener(data.handles_smoothing(nsmoothing), 'ContinuousValueChange',@(varargin)changeSmoothing(nsmoothing)); end
             smoothingnames{nsmoothing}=['Smooth ',data.allPlotMeasures{nsmoothing}];
@@ -272,22 +273,22 @@ function FLvideo(videoFile)
         
         thresholdnames={};
         for nthreshold=1:numel(threshold)
-            data.handles_thresholdEdit(nthreshold)=uicontrol('Style', 'edit', 'string', mat2str(round(100*threshold{nthreshold})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [730, 18, 40, 20], ...
+            data.handles_thresholdEdit(nthreshold)=uicontrol('Style', 'edit', 'string', mat2str(round(100*threshold{nthreshold})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [730, 15, 40, 25], ...
             'Callback', @(src, event) changeThreshold(nthreshold,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
-            data.handles_threshold(nthreshold)=uicontrol('Style', 'slider', 'Value', threshold{nthreshold}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [550, 18, 180, 20], ...
+            data.handles_threshold(nthreshold)=uicontrol('Style', 'slider', 'Value', max(0,threshold{nthreshold}), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [550, 15, 180, 25], ...
             'Callback', @(src, event) changeThreshold(nthreshold), 'Parent', data.handles_buttonPanel, 'visible','off');
             try, addlistener(data.handles_threshold(nthreshold), 'ContinuousValueChange',@(varargin)changeThreshold(nthreshold)); end
             thresholdnames{nthreshold}=['Threshold ',data.allPlotMeasures{nthreshold}];
         end
         
-        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'tooltip','Highlights in red areas in the video with high motion velocity (or acceleration when displaying motion acceleration)', 'Position', [550, 18, 180, 20], ...
+        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'tooltip','Highlights in red areas in the video with high motion velocity (or acceleration when displaying motion acceleration)', 'Position', [550, 15, 180, 25], ...
             'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel, 'visible','off');
         
-        data.handles_videodisplay=uicontrol('Style', 'popupmenu', 'string', {'follow mouse clicks', 'follow mouse position'}, 'Value', videodisplay, 'tooltip','<html>Select <i>mouse click</i> to have the displayed video frame change when clicking a timepoint in any of the plots<br/>Select <i>mouse position</i> to have the displayed video frame change when hovering over any of the plots</html>', 'Position', [550, 18, 180, 20], ...
+        data.handles_videodisplay=uicontrol('Style', 'popupmenu', 'string', {'follow mouse clicks', 'follow mouse position'}, 'Value', videodisplay, 'tooltip','<html>Select <i>mouse click</i> to have the displayed video frame change when clicking a timepoint in any of the plots<br/>Select <i>mouse position</i> to have the displayed video frame change when hovering over any of the plots</html>', 'Position', [550, 15, 180, 25], ...
             'Callback', @(src, event) changeFrameMotion(src, event, hFig), 'Parent', data.handles_buttonPanel, 'visible','off');
         
-        uicontrol('Style', 'text', 'String', 'Settings', 'Position', [440, 40, 100, 20], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_settings=uicontrol('Style', 'popupmenu', 'string', {'          ', 'GUI Layout', 'Video display', 'Spectrogram color', 'Highlight motion in video', smoothingnames{:}, thresholdnames{:}}, 'Value', 1, 'Position', [550, 40, 180, 20], ...
+        uicontrol('Style', 'text', 'String', 'Settings', 'Position', [440, 40, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_settings=uicontrol('Style', 'popupmenu', 'string', {'          ', 'GUI Layout', 'Video display', 'Spectrogram color', 'Highlight motion in video', smoothingnames{:}, thresholdnames{:}}, 'Value', 1, 'Position', [550, 40, 180, 25], ...
             'Callback', @changeGuiOptions, 'Parent', data.handles_buttonPanel, 'userdata',[{data.handles_layout}, {data.handles_videodisplay}, {data.handles_colormap}, {data.handles_motionhighlight}, num2cell([data.handles_smoothing; data.handles_smoothingEdit],1), num2cell([data.handles_threshold; data.handles_thresholdEdit],1)]);
         
         % Bottom row: Selection and save controls
@@ -791,6 +792,10 @@ function FLvideo(videoFile)
                 if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
                     [data.acousticEnergy.pcenter1_smoothed, data.acousticEnergy.pcenter2_smoothed] = deal([]);
                 end
+            case 'Acoustic zero-crossings'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.zcross1_smoothed, data.acousticEnergy.zcross2_smoothed] = deal([]);
+                end
             case 'Acoustic Acceleration'
                 if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
                     [data.acousticEnergy.ddE1_smoothed, data.acousticEnergy.ddE2_smoothed] = deal([]);
@@ -818,11 +823,11 @@ function FLvideo(videoFile)
         switch(data.allPlotMeasures{nthreshold})
             case 'Velocity of Movements'
                 data.globalMotionVel_thresholded=[];
-            case 'Acoustic Energy', 
+            case 'Acoustic Energy'
                 if isfield(data,'acousticEnergy')&&~isempty(data.acousticEnergy),
                     [data.acousticEnergy.E1_thresholded, data.acousticEnergy.E2_thresholded]=deal([]);
                 end
-            case 'Acceleration of Movements', 
+            case 'Acceleration of Movements'
                 data.globalMotionAcc_thresholded=[];
             case 'Audio HNR (Harmonic to Noise Ratio)'
                 if isfield(data,'harmonicRatio')&&~isempty(data.harmonicRatio),
@@ -836,6 +841,10 @@ function FLvideo(videoFile)
                 if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
                     [data.acousticEnergy.pcenter1_thresholded, data.acousticEnergy.pcenter2_thresholded] = deal([]);
                 end
+            case 'Acoustic zero-crossings'
+                if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
+                    [data.acousticEnergy.zcross1_thresholded, data.acousticEnergy.zcross2_thresholded] = deal([]);
+                end
             case 'Acoustic Acceleration'
                 if isfield(data,'acousticEnergy') && ~isempty(data.acousticEnergy)
                     [data.acousticEnergy.ddE1_thresholded, data.acousticEnergy.ddE2_thresholded] = deal([]);
@@ -843,7 +852,7 @@ function FLvideo(videoFile)
         end
         if isfield(data,'globalMotionVel'), 
             if ismac, ALT='OPTION'; else ALT='ALT'; end
-            if data.threshold{nthreshold}>0, fprintf('Display timepoints when %s crosses %d%% of maximum value (use %s + left-click to select these boundary timepoints)\n', data.allPlotMeasures{nthreshold},round(100*data.threshold{nthreshold}),ALT);
+            if data.threshold{nthreshold}>0, fprintf('Display timepoints when %s crosses %d%% of maximum value (use SHIFT + %s + left-click to snap the cursor to these boundary timepoints)\n', data.allPlotMeasures{nthreshold},round(100*data.threshold{nthreshold}),ALT);
             else fprintf('Displays raw/unthresholded %s\n',data.allPlotMeasures{nthreshold});
             end
             changePlotMeasure(); 
@@ -857,7 +866,7 @@ function FLvideo(videoFile)
         if isfield(data,'globalMotionVel'), 
             for nplot=1:nplots
                 if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
-                   {'Velocity of Movements', 'Acoustic Energy', 'Acoustic Velocity', 'Acoustic p-center', 'Acoustic Acceleration', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)'}) % all plots
+                   {'Velocity of Movements', 'Acoustic Energy', 'Acoustic Velocity', 'Acoustic p-center', 'Acoustic zero-crossings','Acoustic Acceleration', 'Acceleration of Movements', 'Audio HNR (Harmonic to Noise Ratio)'}) % all plots
                     if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
                        {'Audio HNR (Harmonic to Noise Ratio)'}) ...
                        && (~isfield(data,'harmonicRatio')||isempty(data.harmonicRatio))
@@ -871,10 +880,10 @@ function FLvideo(videoFile)
                         data.harmonicRatio.SampleRate=1/median(diff(data.harmonicRatio.t));
                     end
                     if ismember(data.allPlotMeasures{data.plotMeasure(nplot)}, ...
-                       {'Acoustic p-center'}) ...
+                       {'Acoustic p-center','Acoustic zero-crossings'}) ...
                        && (~isfield(data,'acousticEnergy')||~isfield(data.acousticEnergy,'pcenter_t')||isempty(data.acousticEnergy.pcenter_t))
-                        [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter1] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalRaw);
-                        [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter2] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalDen);
+                        [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter1,data.acousticEnergy.zcross1] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalRaw);
+                        [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter2,data.acousticEnergy.zcross2] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalDen);
                     end
                     [plotdataX, plotdataY, plotdataT,ischanged] = getMeasure(data.plotMeasure(nplot)); % gets measure timeseries (+optional smoothing & thresholding)
                     set(data.handles_otherPlot1(nplot),'xdata',plotdataX,'ydata',plotdataY,'visible','on');
@@ -962,6 +971,12 @@ function FLvideo(videoFile)
                 end
                 SampleRate = 1000; % note: matched to hopDurE = 0.001 in flvideo_estimateacousticpcenter
                 plotdataX  = data.acousticEnergy.pcenter_t;
+            case 'Acoustic zero-crossings'
+                if data.audioSignalSelect==1, fieldname='acousticEnergy.zcross1';
+                else                         fieldname='acousticEnergy.zcross2';
+                end
+                SampleRate = 1000; % note: matched to hopDurE = 0.001 in flvideo_estimateacousticpcenter
+                plotdataX  = data.acousticEnergy.pcenter_t;
             case 'Acoustic Acceleration'
                 if data.audioSignalSelect==1, fieldname='acousticEnergy.ddE1';
                 else                         fieldname='acousticEnergy.ddE2';
@@ -971,12 +986,15 @@ function FLvideo(videoFile)
         end
         fieldname_smoothed=[fieldname,'_smoothed'];
         fieldname_thresholded=[fieldname,'_thresholded'];
-        if data.smoothing{nmeasure}>0&&(~isfieldx(data,fieldname_smoothed)||isempty(getfieldx(data,fieldname_smoothed))), % timeseries smoothed
+        if data.smoothing{nmeasure}>0&&(~isfieldx(data,fieldname_smoothed)||isempty(getfieldx(data,fieldname_smoothed))) % timeseries smoothed
             temp=getfieldx(data,fieldname);
             data=setfieldx(data,fieldname_smoothed, reshape(convn(reshape(temp,[],1),flvoice_hanning(2*ceil(data.smoothing{nmeasure}*data.maxsmoothing*SampleRate/2)+1, true),'same'),size(temp)));
             data=setfieldx(data,fieldname_thresholded,[]);
         end
-        if data.threshold{nmeasure}>0&&(~isfieldx(data,fieldname_thresholded)||isempty(getfieldx(data,fieldname_thresholded))), % timeseries thresholded
+        if data.threshold{nmeasure}==0&&~isempty(regexp(fieldname,'^acousticEnergy.zcross')) % ~hack to initialize zero-crossings threshold to 4000 value
+            data.threshold{nmeasure}=4000/max(getfieldx(data,fieldname));
+        end
+        if data.threshold{nmeasure}>0&&(~isfieldx(data,fieldname_thresholded)||isempty(getfieldx(data,fieldname_thresholded))) % timeseries thresholded
             thr=data.threshold{nmeasure}*max(getfieldx(data,fieldname));
             if data.smoothing{nmeasure}>0, temp=getfieldx(data,fieldname_smoothed)>thr;
             else temp=getfieldx(data,fieldname)>thr;
@@ -1382,18 +1400,31 @@ function FLvideo(videoFile)
     end
 
     function refTime = flvideo_findacousticpcenter(in_ref, refTime) % Acoustic p center (SHIFT)
+        if ~isfield(data.acousticEnergy,'pcenter_t')||isempty(data.acousticEnergy.pcenter_t) % compute now if user pressed P before plotting any of the p-center timecourses
+            [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter1] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalRaw);
+            [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter2] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalDen);
+        end
         x = data.acousticEnergy.pcenter_t;
         if data.audioSignalSelect==1, y = data.acousticEnergy.pcenter1;
         else y = data.acousticEnergy.pcenter2;
         end
-        idx1=1+find(y(2:end-1)>y(1:end-2) & y(2:end-1)>=y(3:end));
-        if ~isempty(idx1)
-            [nill,idx2]=min(abs(x(idx1)-refTime));
-            refTime=x(idx1(idx2));
+        if 1 % selects largest value within 120ms window around cursor
+            smoothPeak=.120; 
+            idx1=find(abs(x-refTime)<=smoothPeak); 
+            if ~isempty(idx1)
+                [nill,idx2]=max(y(idx1)); 
+                refTime=x(idx1(idx2));
+            end
+        else % selects closest peak around cursor
+            idx1=1+find(y(2:end-1)>y(1:end-2) & y(2:end-1)>=y(3:end));
+            if ~isempty(idx1)
+                [nill,idx2]=min(abs(x(idx1)-refTime)); 
+                refTime=x(idx1(idx2));
+            end
         end
     end
 
-    function [tE,dE_m] = flvideo_estimateacousticpcenter(t,y) % Acoustic p center (SHIFT)
+    function [tE,dE_m,Z] = flvideo_estimateacousticpcenter(t,y) % Acoustic p center (SHIFT)
         % Acoustic P-center based on Rathcke et al. (JASA 2024):
         %   1) short-time ENERGY contour (40 ms window, 1 ms hop)
         %   2) smooth energy
