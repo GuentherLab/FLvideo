@@ -1178,10 +1178,18 @@ function FLvideo(videoFile)
                 startSample = max(1, round((startFrame-1)/data.FrameRate * data.SampleRate));
                 endSample = min(length(data.audioSignal), round((endFrame+1)/data.FrameRate* data.SampleRate-1));
                 audioClip = data.audioSignal(startSample:endSample, :); % Extract audio segment
+                textgridLabels = data.textgridLabels;
+                for n=1:numel(textgridLabels) % select&edits temporal labels within selected time window
+                    mask = any(textgridLabels(n).intervals>=startSample/data.SampleRate & textgridLabels(n).intervals<=endSample/data.SampleRate,1);
+                    textgridLabels(n).intervals = textgridLabels(n).intervals(:,mask);
+                    textgridLabels(n).intervals = textgridLabels(n).intervals-startSample/data.SampleRate; 
+                    textgridLabels(n).labels = textgridLabels(n).labels(mask);
+                end
             case 'full'
                 startFrame = 1;
                 endFrame = data.numFrames;
                 audioClip = data.audioSignal;
+                textgridLabels = data.textgridLabels;
             otherwise, error('unrecognized option %s',option)
         end
 
@@ -1314,7 +1322,7 @@ function FLvideo(videoFile)
             case 'mat'
                 video = struct('data',{data.frameCache(startFrame:endFrame)},'fs',data.FrameRate);
                 audio = struct('data',audioClip,'fs',data.SampleRate);
-                labels = struct('textgridLabels',data.textgridLabels, 'textgridTier_names', {data.textgridTier_options}, 'textgridTier', data.textgridTier);
+                labels = struct('textgridLabels',textgridLabels, 'textgridTier_names', {data.textgridTier_options}, 'textgridTier', data.textgridTier);
                 save(outputFile, 'video', 'audio', 'labels');
                 disp(['Clip saved to: ', outputFile]);
         end
