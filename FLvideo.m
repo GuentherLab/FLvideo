@@ -181,8 +181,8 @@ function FLvideo(videoFile)
                                     args_ffmpeg=sprintf('-y -i ''%s'' -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k ''%s''', videoFile,outputfile);
                                     cmd='ffmpeg'; args=args_ffmpeg;
                                     [ko,msg]=system('which ffmpeg');
-                                    if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
-                                    if ko~=0 && ~isempty('/Applications/ffmpeg'), ko=0; cmd='/Applications/ffmpeg'; end
+                                    if ko~=0 && exist('/usr/local/bin/ffmpeg','file'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+                                    if ko~=0 && exist('/Applications/ffmpeg','file'), ko=0; cmd='/Applications/ffmpeg'; end
                                     if ko==0 % try merging using ffmpeg
                                         [ko,msg]=system(sprintf('%s %s', cmd, args));
                                         if ko~=0,
@@ -1122,7 +1122,7 @@ function FLvideo(videoFile)
             case 'mp4'
                 tempfilekey=[datestr(now,'HHMMSSFFF'),regexprep(char(matlab.lang.internal.uuid),'-','')];
                 tempfile_video=fullfile(pwd,['FLvideo_temporalfile_video_',tempfilekey,'.mp4']);
-                tempfile_audio=fullfile(pwd,['FLvideo_temporalfile_audio_',tempfilekey,'.mp4']);
+                tempfile_audio=fullfile(pwd,['FLvideo_temporalfile_audio_',tempfilekey,'.wav']);
                 % Write video
                 writer = VideoWriter(tempfile_video,'MPEG-4');
                 writer.FrameRate=data.FrameRate;
@@ -1145,8 +1145,10 @@ function FLvideo(videoFile)
                 end
                 audiowrite(tempfile_audio, audioClip, SampleRate);
                 if ispc
-                    args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', tempfile_video,tempfile_audio, outputFile);
-                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+                    args_ffmpeg=sprintf('-y -i "%s" -i "%s" -c:v copy -c:a aac -b:a 192k -async 1 "%s"', tempfile_video,tempfile_audio, outputFile);
+                    args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout="#transcode{acodec=mp4a,ab=192}:gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+                    %args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', tempfile_video,tempfile_audio, outputFile);
+                    %args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('where ffmpeg');
                     if ko~=0
@@ -1164,18 +1166,20 @@ function FLvideo(videoFile)
                         disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
                     end
                 else
-                    args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', tempfile_video,tempfile_audio, outputFile);
-                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+                    args_ffmpeg=sprintf('-y -i ''%s'' -i ''%s'' -c:v copy -c:a aac -b:a 192k -async 1 ''%s''', tempfile_video,tempfile_audio, outputFile);
+                    args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout="#transcode{acodec=mp4a,ab=192}:gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+                    %args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', tempfile_video,tempfile_audio, outputFile);
+                    %args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
                     cmd='ffmpeg'; args=args_ffmpeg;
                     [ko,msg]=system('which ffmpeg');
-                    if ko~=0 && ~isempty('/usr/local/bin/ffmpeg'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
-                    if ko~=0 && ~isempty('/Applications/ffmpeg'), ko=0; cmd='/Applications/ffmpeg'; end
+                    if ko~=0 && exist('/usr/local/bin/ffmpeg','file'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+                    if ko~=0 && exist('/Applications/ffmpeg','file'), ko=0; cmd='/Applications/ffmpeg'; end
                     if ko~=0
                         cmd='vlc'; args=args_vlc;
                         [ko,msg]=system('which vlc');
-                        if ko~=0 && ~isempty('/usr/local/bin/vlc'), ko=0; cmd='/usr/local/bin/vlc'; end
-                        if ko~=0 && ~isempty('/Applications/vlc'), ko=0; cmd='/Applications/vlc'; end
-                        if ko~=0 && ~isempty('/Applications/VLC.app'), ko=0; cmd='/Applications/VLC.app/Contents/MacOS/VLC'; end
+                        if ko~=0 && exist('/usr/local/bin/vlc','file'), ko=0; cmd='/usr/local/bin/vlc'; end
+                        if ko~=0 && exist('/Applications/vlc','file'), ko=0; cmd='/Applications/vlc'; end
+                        if ko~=0 && exist('/Applications/VLC.app','file'), ko=0; cmd='/Applications/VLC.app/Contents/MacOS/VLC'; end
                     end                        
                     if ko==0 % try merging using ffmpeg
                         [ko,msg]=system(sprintf('%s %s', cmd, args));
