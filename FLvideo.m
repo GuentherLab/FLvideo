@@ -87,6 +87,7 @@ function FLvideo(videoFile)
         zoomWindow=[];
         zoomin=false;
         isselected='off';
+        loaded_textgrid=false;
         % Create the main figure for video, audio, and controls
         if nargin<2, 
             hFig = figure('units','norm','Position', [.25, .1, .5, .8], 'MenuBar', 'none', 'NumberTitle', 'off', 'Name', 'Video Player','color','w', 'WindowButtonDownFcn', @(varargin)flvideo_buttonfcn('down',varargin{:}),'WindowButtonUpFcn',@(varargin)flvideo_buttonfcn('up',varargin{:}),'WindowButtonMotionFcn',@(varargin)flvideo_buttonfcn('motion',varargin{:}),'windowkeypressfcn',@(varargin)flvideo_keyfcn('press',varargin{:}),'windowkeyreleasefcn',@(varargin)flvideo_keyfcn('release',varargin{:}));
@@ -116,6 +117,8 @@ function FLvideo(videoFile)
             XLim=data.XLim;
             textgridLabels=data.textgridLabels;
             textgridTier_options=data.textgridTier_options;
+            textgridTier=data.textgridTier;
+            loaded_textgrid=true;
             NewData=true;
             ComputeDerivedMeasures=false;
             zoomWindow=data.zoomWindow;
@@ -133,11 +136,12 @@ function FLvideo(videoFile)
         else         
             data=[];
         end
-        if ~isempty(videoFile), 
+        if ~isempty(videoFile) 
             try
                 switch(regexprep(videoFile,'^.*\.',''))
                     case 'mat' % reads video file from .mat file
-                        load(videoFile,'audio','video');
+                        labels=[];
+                        load(videoFile,'audio','video','labels');
                         audioSignal=audio.data;
                         audioFs=audio.fs;
                         frameCache=video.data;
@@ -145,7 +149,12 @@ function FLvideo(videoFile)
                         numFrames=numel(frameCache);
                         totalDuration=max(length(audioSignal)/audioFs, numFrames/FrameRate);
                         XLim = [0 totalDuration];
-
+                        if ~isempty(labels)
+                            textgridLabels=labels.textgridLabels;
+                            textgridTier_options=labels.textgridTier_names;
+                            textgridTier=labels.textgridTier;
+                            loaded_textgrid=true;
+                        end
                     otherwise % reads video file
                         % Extract audio signal
                         [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
@@ -184,22 +193,24 @@ function FLvideo(videoFile)
                 errordlg([{'Problem reading video file:'} getReport(me,'basic','hyperlinks','off')], 'Video Player error');
                 isready='off';
             end
-            textgridFile=[regexprep(videoFile,'\.[^\.]+$',''),'.TextGrid'];
-            textgridLabels=[];
-            textgridTier_options={'none'};
-            textgridTier=0;
-            if NewData&&~isempty(dir(textgridFile))
-                try
-                    fprintf('Reading TextGrid file %s\n',textgridFile);
-                    out=flvoice_readTextGrid(textgridFile);
-                    textgridTier_options=[{'none'}, out.label];
-                    textgridTier=min(1,numel(out));
-                    textgridLabels=struct('intervals',[],'labels',[]);
-                    for n1=1:numel(out), 
-                        textgridLabels(n1)=struct('intervals',[[out(n1).interval.t1]; [out(n1).interval.t2]],'labels',{regexprep({out(n1).interval.label},'.*','   $0   ')});
+            if ~loaded_textgrid
+                textgridFile=[regexprep(videoFile,'\.[^\.]+$',''),'.TextGrid'];
+                textgridLabels=[];
+                textgridTier_options={'none'};
+                textgridTier=0;
+                if NewData&&~isempty(dir(textgridFile))
+                    try
+                        fprintf('Reading TextGrid file %s\n',textgridFile);
+                        out=flvoice_readTextGrid(textgridFile);
+                        textgridTier_options=[{'none'}, out.label];
+                        textgridTier=min(1,numel(out));
+                        textgridLabels=struct('intervals',[],'labels',[]);
+                        for n1=1:numel(out),
+                            textgridLabels(n1)=struct('intervals',[[out(n1).interval.t1]; [out(n1).interval.t2]],'labels',{regexprep({out(n1).interval.label},'.*','   $0   ')});
+                        end
+                    catch me
+                        errordlg([{'Problem reading TextGrid file:'} getReport(me,'basic','hyperlinks','off')], 'Video Player error');
                     end
-                catch me
-                    errordlg([{'Problem reading TextGrid file:'} getReport(me,'basic','hyperlinks','off')], 'Video Player error');
                 end
             end
         end
@@ -228,44 +239,48 @@ function FLvideo(videoFile)
         uicontrol('Style', 'pushbutton', 'String', 'Load New Video', 'Position', [20, 70, 210, 40], ...
             'Callback', @(src, event) loadNewVideo(hFig), 'Parent', data.handles_buttonPanel);
         
+        temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_save.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,20,32,20,32),1),3)),[1,1,3]); temp(temp==1)=nan;
+        data.handles_saveentireclipButton = uicontrol('Style', 'pushbutton', 'tooltip', 'Save new Clip with entire video', 'Position', [270, 70, 40, 40], 'cdata', temp, ...
+            'Callback', @(src, event) saveClip(hFig,'full'), 'Parent', data.handles_buttonPanel);
+
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_rest.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
-        uicontrol('Style', 'pushbutton', 'tooltip', 'Rewind', 'Position', [270, 70, 40, 40], 'cdata', temp, ...
+        uicontrol('Style', 'pushbutton', 'tooltip', 'Rewind', 'Position', [310, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) rewindVideo(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_back.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
-        uicontrol('Style', 'pushbutton', 'tooltip', 'Previous Frame', 'Position', [310, 70, 40, 40], 'cdata', temp, ...
+        uicontrol('Style', 'pushbutton', 'tooltip', 'Previous Frame', 'Position', [350, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) previousFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_play.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; 
         data.handles_icons{1}=temp; 
-        data.handles_playButton=uicontrol('Style', 'pushbutton', 'tooltip', 'Play/Pause', 'Position', [350, 70, 40, 40], 'cdata', temp, ...
+        data.handles_playButton=uicontrol('Style', 'pushbutton', 'tooltip', 'Play/Pause', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) togglePlayPause(src, event, hFig), 'Parent', data.handles_buttonPanel);
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_paus.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; 
         data.handles_icons{2}=temp;
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_forw.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan;
-        uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [390, 70, 40, 40], 'cdata', temp, ...
+        uicontrol('Style', 'pushbutton', 'tooltip', 'Next Frame', 'Position', [430, 70, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) nextFrame(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [440, 94, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [550, 94, 180, 25], ...
+        uicontrol('Style', 'text', 'String', 'Playback Speed', 'Position', [480, 94, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_playbackspeed=uicontrol('Style', 'popupmenu', 'Value', 5, 'string', {'0.1x', '0.25x', '0.5x', '0.75x', '1x', '1.25x', '1.5x', '2x', '5x'}, 'value', selectspeed, 'Position', [590, 94, 180, 25], ...
             'Callback', @(src, event) adjustPlaybackSpeed(src, event, hFig), 'Parent', data.handles_buttonPanel);
 
-        uicontrol('Style', 'text', 'String', 'Display Labels', 'Position', [440, 67, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_textgridtier=uicontrol('Style', 'popupmenu', 'string', textgridTier_options, 'Value', textgridTier+1, 'tooltip','Selects tier to display from TextGrid labels file (if a .TextGrid file associated with the current .mp4 file exists)', 'Position', [550, 67, 180, 25], ...
+        uicontrol('Style', 'text', 'String', 'Display Labels', 'Position', [480, 67, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_textgridtier=uicontrol('Style', 'popupmenu', 'string', textgridTier_options, 'Value', textgridTier+1, 'tooltip','Selects tier to display from TextGrid labels file (if a .TextGrid file associated with the current .mp4 file exists)', 'Position', [590, 67, 180, 25], ...
             'Callback', @(src, event) changeTextgridTier(src, event, hFig), 'Parent', data.handles_buttonPanel);
         
-        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'tooltip', 'Select the desired GUI layout', 'Position', [550, 15, 180, 25], ...
+        data.handles_layout=uicontrol('Style', 'popupmenu', 'string', {'standard', 'maximized (horizontal layout)', 'maximized (vertical layout)'}, 'Value', layout, 'tooltip', 'Select the desired GUI layout', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeLayout, 'Parent', data.handles_buttonPanel, 'visible','off');
         
-        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'tooltip', 'Select colormap used when displaying the audio spectrogram', 'Position', [550, 15, 180, 25], ...
+        data.handles_colormap=uicontrol('Style', 'popupmenu', 'string', {'gray', 'jet', 'parula','hot','sky','bone','copper'}, 'Value', cmapselect, 'tooltip', 'Select colormap used when displaying the audio spectrogram', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeColormap(src, event, hFig), 'Parent', data.handles_buttonPanel, 'visible','off');
         
         smoothingnames={};
         for nsmoothing=1:numel(smoothing)
             data.handles_smoothingEdit(nsmoothing)=uicontrol('Style', 'edit', 'string', mat2str(round(1000*maxsmoothing*smoothing{nsmoothing})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [730, 15, 40, 25], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
-            data.handles_smoothing(nsmoothing)=uicontrol('Style', 'slider', 'Value', smoothing{nsmoothing}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [550, 15, 180, 25], ...
+            data.handles_smoothing(nsmoothing)=uicontrol('Style', 'slider', 'Value', smoothing{nsmoothing}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing), 'Parent', data.handles_buttonPanel, 'visible','off');
             try, addlistener(data.handles_smoothing(nsmoothing), 'ContinuousValueChange',@(varargin)changeSmoothing(nsmoothing)); end
             smoothingnames{nsmoothing}=['Smooth ',data.allPlotMeasures{nsmoothing}];
@@ -275,20 +290,20 @@ function FLvideo(videoFile)
         for nthreshold=1:numel(threshold)
             data.handles_thresholdEdit(nthreshold)=uicontrol('Style', 'edit', 'string', mat2str(round(100*threshold{nthreshold})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [730, 15, 40, 25], ...
             'Callback', @(src, event) changeThreshold(nthreshold,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
-            data.handles_threshold(nthreshold)=uicontrol('Style', 'slider', 'Value', max(0,threshold{nthreshold}), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [550, 15, 180, 25], ...
+            data.handles_threshold(nthreshold)=uicontrol('Style', 'slider', 'Value', max(0,threshold{nthreshold}), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeThreshold(nthreshold), 'Parent', data.handles_buttonPanel, 'visible','off');
             try, addlistener(data.handles_threshold(nthreshold), 'ContinuousValueChange',@(varargin)changeThreshold(nthreshold)); end
             thresholdnames{nthreshold}=['Threshold ',data.allPlotMeasures{nthreshold}];
         end
         
-        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'tooltip','Highlights in red areas in the video with high motion velocity (or acceleration when displaying motion acceleration)', 'Position', [550, 15, 180, 25], ...
+        data.handles_motionhighlight=uicontrol('Style', 'popupmenu', 'string', {'off', 'on'}, 'Value', motionHighlight, 'tooltip','Highlights in red areas in the video with high motion velocity (or acceleration when displaying motion acceleration)', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeMotionHighlight(src, event, hFig), 'Parent', data.handles_buttonPanel, 'visible','off');
         
-        data.handles_videodisplay=uicontrol('Style', 'popupmenu', 'string', {'follow mouse clicks', 'follow mouse position'}, 'Value', videodisplay, 'tooltip','<html>Select <i>mouse click</i> to have the displayed video frame change when clicking a timepoint in any of the plots<br/>Select <i>mouse position</i> to have the displayed video frame change when hovering over any of the plots</html>', 'Position', [550, 15, 180, 25], ...
+        data.handles_videodisplay=uicontrol('Style', 'popupmenu', 'string', {'follow mouse clicks', 'follow mouse position'}, 'Value', videodisplay, 'tooltip','<html>Select <i>mouse click</i> to have the displayed video frame change when clicking a timepoint in any of the plots<br/>Select <i>mouse position</i> to have the displayed video frame change when hovering over any of the plots</html>', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeFrameMotion(src, event, hFig), 'Parent', data.handles_buttonPanel, 'visible','off');
         
-        uicontrol('Style', 'text', 'String', 'Settings', 'Position', [440, 40, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
-        data.handles_settings=uicontrol('Style', 'popupmenu', 'string', {'          ', 'GUI Layout', 'Video display', 'Spectrogram color', 'Highlight motion in video', smoothingnames{:}, thresholdnames{:}}, 'Value', 1, 'Position', [550, 40, 180, 25], ...
+        uicontrol('Style', 'text', 'String', 'Settings', 'Position', [480, 40, 100, 25], 'horizontalalignment','right', 'Parent', data.handles_buttonPanel);
+        data.handles_settings=uicontrol('Style', 'popupmenu', 'string', {'          ', 'GUI Layout', 'Video display', 'Spectrogram color', 'Highlight motion in video', smoothingnames{:}, thresholdnames{:}}, 'Value', 1, 'Position', [590, 40, 180, 25], ...
             'Callback', @changeGuiOptions, 'Parent', data.handles_buttonPanel, 'userdata',[{data.handles_layout}, {data.handles_videodisplay}, {data.handles_colormap}, {data.handles_motionhighlight}, num2cell([data.handles_smoothing; data.handles_smoothingEdit],1), num2cell([data.handles_threshold; data.handles_thresholdEdit],1)]);
         
         % Bottom row: Selection and save controls
@@ -296,20 +311,20 @@ function FLvideo(videoFile)
             'Callback', @(src, event) selectPoints(hFig), 'Parent', data.handles_buttonPanel, 'enable',isready);
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_save.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,20,32,20,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
-        data.handles_saveclipButton = uicontrol('Style', 'pushbutton', 'tooltip', 'Save Clip with video within selected window', 'Position', [310, 20, 40, 40], 'cdata', temp, ...
+        data.handles_saveclipButton = uicontrol('Style', 'pushbutton', 'tooltip', 'Save Clip with video within selected window', 'Position', [270, 20, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) saveClip(hFig), 'Parent', data.handles_buttonPanel, 'enable',isselected);
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_play.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
         data.handles_icons{3}=temp;
         data.handles_playSelectionButton = uicontrol('Style', 'pushbutton', 'tooltip', 'Play/Pause video within selected window', 'cdata', temp, ...
-            'Position', [350, 20, 40, 40], 'Enable', isselected, ...
+            'Position', [310, 20, 40, 40], 'Enable', isselected, ...
             'Callback', @(src, event) playSelection(hFig), 'Parent', data.handles_buttonPanel);
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_paus.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,16,32,16,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
         data.handles_icons{4}=temp;
 
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_zoomin.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,20,32,20,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
         data.handles_icons{5}=temp;
-        data.handles_zoomButton=uicontrol('Style', 'pushbutton', 'tooltip', 'Zoom In/Out of selected window', 'Position', [390, 20, 40, 40], 'cdata', temp, ...
+        data.handles_zoomButton=uicontrol('Style', 'pushbutton', 'tooltip', 'Zoom In/Out of selected window', 'Position', [350, 20, 40, 40], 'cdata', temp, ...
             'Callback', @(src, event) zoomIn([],true), 'Parent', data.handles_buttonPanel, 'enable',isselected);
         temp=imread(fullfile(fileparts(which(mfilename)),'icons','icon_zoomout.png')); temp=repmat(squeeze(mean(mean(reshape(double(temp)/255,20,32,20,32),1),3)),[1,1,3]); temp(temp==1)=nan; temp(:,:,3)=1;
         data.handles_icons{6}=temp;
@@ -1142,25 +1157,33 @@ function FLvideo(videoFile)
         % zoomIn(true,true);
     end
 
-    function saveClip(hFig)
+    function saveClip(hFig,option)
         % Check if audioLine and motionLine exist
-        if isempty(data.zoomWindow)
-            disp('Error: Select time points before saving a clip.');
-            return;
+        if nargin<2||isempty(option), option='selection'; end
+
+        switch(option)
+            case 'selection'
+                if isempty(data.zoomWindow)
+                    disp('Error: Select time points before saving a clip.');
+                    return;
+                end
+                % Calculate start and end times (in seconds)
+                startTime = data.zoomWindow(1);
+                endTime = data.zoomWindow(2);
+                % Calculate frame range
+                startFrame = max(1, min(data.numFrames, 1+floor(startTime * data.FrameRate)));
+                endFrame = max(1, min(data.numFrames, 1+floor(endTime * data.FrameRate)));
+                disp(['Saving clip from ', num2str(startTime), ' to ', num2str(endTime), ' seconds (', num2str(endFrame-startFrame+1),' frames)']);
+                % Calculate audio sample range
+                startSample = max(1, round((startFrame-1)/data.FrameRate * data.SampleRate));
+                endSample = min(length(data.audioSignal), round((endFrame+1)/data.FrameRate* data.SampleRate-1));
+                audioClip = data.audioSignal(startSample:endSample, :); % Extract audio segment
+            case 'full'
+                startFrame = 1;
+                endFrame = data.numFrames;
+                audioClip = data.audioSignal;
+            otherwise, error('unrecognized option %s',option)
         end
-
-        % Calculate start and end times (in seconds)
-        startTime = data.zoomWindow(1);
-        endTime = data.zoomWindow(2);
-        % Calculate frame range
-        startFrame = max(1, min(data.numFrames, 1+floor(startTime * data.FrameRate)));
-        endFrame = max(1, min(data.numFrames, 1+floor(endTime * data.FrameRate)));
-        disp(['Saving clip from ', num2str(startTime), ' to ', num2str(endTime), ' seconds (', num2str(endFrame-startFrame+1),' frames)']);
-
-        % Calculate audio sample range
-        startSample = max(1, round((startFrame-1)/data.FrameRate * data.SampleRate));
-        endSample = min(length(data.audioSignal), round((endFrame+1)/data.FrameRate* data.SampleRate-1));
-        audioClip = data.audioSignal(startSample:endSample, :); % Extract audio segment
 
         % Prompt user for output file name
         if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','.mp4');
@@ -1291,7 +1314,8 @@ function FLvideo(videoFile)
             case 'mat'
                 video = struct('data',{data.frameCache(startFrame:endFrame)},'fs',data.FrameRate);
                 audio = struct('data',audioClip,'fs',data.SampleRate);
-                save(outputFile, 'video','audio');
+                labels = struct('textgridLabels',data.textgridLabels, 'textgridTier_names', {data.textgridTier_options}, 'textgridTier', data.textgridTier);
+                save(outputFile, 'video', 'audio', 'labels');
                 disp(['Clip saved to: ', outputFile]);
         end
     end
