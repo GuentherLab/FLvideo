@@ -1197,7 +1197,7 @@ function FLvideo(videoFile)
         if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','.mp4');
         else                          suggestedfileName=regexprep(data.videoFile,'(_denoised)?\.[^\.]*$','_denoised.mp4');
         end
-        [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As', suggestedfileName);
+        [fileName, filePath] = uiputfile({'*.mat', 'Matlb Video File (*.mat)'; '*.mp4', 'MP4 Video File (*.mp4)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As', suggestedfileName);
         if fileName == 0
             disp('Saving cancelled.');
             return;
@@ -1323,7 +1323,7 @@ function FLvideo(videoFile)
                 video = struct('data',{data.frameCache(startFrame:endFrame)},'fs',data.FrameRate);
                 audio = struct('data',audioClip,'fs',data.SampleRate);
                 labels = struct('textgridLabels',textgridLabels, 'textgridTier_names', {data.textgridTier_options}, 'textgridTier', data.textgridTier);
-                save(outputFile, 'video', 'audio', 'labels');
+                save(outputFile, 'video', 'audio', 'labels', '-v7.3');
                 disp(['Clip saved to: ', outputFile]);
         end
     end
