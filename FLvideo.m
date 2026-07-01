@@ -278,7 +278,7 @@ function FLvideo(videoFile)
         
         smoothingnames={};
         for nsmoothing=1:numel(smoothing)
-            data.handles_smoothingEdit(nsmoothing)=uicontrol('Style', 'edit', 'string', mat2str(round(1000*maxsmoothing*smoothing{nsmoothing})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [730, 15, 40, 25], ...
+            data.handles_smoothingEdit(nsmoothing)=uicontrol('Style', 'edit', 'string', mat2str(round(1000*maxsmoothing*smoothing{nsmoothing})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [770, 15, 40, 25], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
             data.handles_smoothing(nsmoothing)=uicontrol('Style', 'slider', 'Value', smoothing{nsmoothing}, 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no smoothing; maximum: 200ms hanning window)', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeSmoothing(nsmoothing), 'Parent', data.handles_buttonPanel, 'visible','off');
@@ -288,7 +288,7 @@ function FLvideo(videoFile)
         
         thresholdnames={};
         for nthreshold=1:numel(threshold)
-            data.handles_thresholdEdit(nthreshold)=uicontrol('Style', 'edit', 'string', mat2str(round(100*threshold{nthreshold})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [730, 15, 40, 25], ...
+            data.handles_thresholdEdit(nthreshold)=uicontrol('Style', 'edit', 'string', mat2str(round(100*threshold{nthreshold})), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [770, 15, 40, 25], ...
             'Callback', @(src, event) changeThreshold(nthreshold,'edit'), 'Parent', data.handles_buttonPanel, 'visible','off');
             data.handles_threshold(nthreshold)=uicontrol('Style', 'slider', 'Value', max(0,threshold{nthreshold}), 'tooltip','Smooths velocity/acceleration/energy/etc plots (minimum: no threshold; maximum: 200ms hanning window)', 'Position', [590, 15, 180, 25], ...
             'Callback', @(src, event) changeThreshold(nthreshold), 'Parent', data.handles_buttonPanel, 'visible','off');
@@ -792,6 +792,7 @@ function FLvideo(videoFile)
             case 'Acoustic Energy', 
                 if isfield(data,'acousticEnergy')&&~isempty(data.acousticEnergy),
                     [data.acousticEnergy.E1_smoothed, data.acousticEnergy.E2_smoothed]=deal([]);
+                    data.acousticEnergy.scenter_t=[]; % note: forces re-estimation of p-center derived from acoustic energy
                 end
             case 'Acceleration of Movements', 
                 data.globalMotionAcc_smoothed=[];
@@ -1194,9 +1195,10 @@ function FLvideo(videoFile)
         end
 
         % Prompt user for output file name
-        if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','.mp4');
-        else                          suggestedfileName=regexprep(data.videoFile,'(_denoised)?\.[^\.]*$','_denoised.mp4');
-        end
+        suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','_edited.mat');
+        %if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','_edited.mat');
+        %else                          suggestedfileName=regexprep(data.videoFile,'(_denoised)?\.[^\.]*$','_denoised.mat');
+        %end
         [fileName, filePath] = uiputfile({'*.mat', 'Matlb Video File (*.mat)'; '*.mp4', 'MP4 Video File (*.mp4)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As', suggestedfileName);
         if fileName == 0
             disp('Saving cancelled.');
@@ -1432,13 +1434,26 @@ function FLvideo(videoFile)
     end
 
     function refTime = flvideo_findacousticpcenter(in_ref, refTime) % Acoustic p center (SHIFT)
-        if ~isfield(data.acousticEnergy,'pcenter_t')||isempty(data.acousticEnergy.pcenter_t) % compute now if user pressed P before plotting any of the p-center timecourses
-            [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter1] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalRaw);
-            [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter2] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalDen);
-        end
-        x = data.acousticEnergy.pcenter_t;
-        if data.audioSignalSelect==1, y = data.acousticEnergy.pcenter1;
-        else y = data.acousticEnergy.pcenter2;
+        if in_ref==1 % NOTE: if cursor is on audio plot, it uses Rathcke definition starting from the raw audio signal
+            if ~isfield(data.acousticEnergy,'pcenter_t')||isempty(data.acousticEnergy.pcenter_t) % compute now if user pressed P before plotting any of the p-center timecourses
+                [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter1] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalRaw);
+                [data.acousticEnergy.pcenter_t,data.acousticEnergy.pcenter2] = flvideo_estimateacousticpcenter((0:numel(data.audioSignalRaw)-1)/data.SampleRate,data.audioSignalDen);
+            end
+            x = data.acousticEnergy.pcenter_t;
+            if data.audioSignalSelect==1, y = data.acousticEnergy.pcenter1;
+            else y = data.acousticEnergy.pcenter2;
+            end
+        else % NOTE: if cursor is NOT on audio plot, it uses Sam's settings (Rathcke definition but starting from the (smoothed) acoustic Energy timecourse)
+            if ~isfield(data.acousticEnergy,'scenter_t')||isempty(data.acousticEnergy.scenter_t) % compute now if user pressed P before plotting any of the p-center timecourses
+                if ~isfield(data.acousticEnergy,'E1_smoothed')||isempty(data.acousticEnergy.E1_smoothed), E1=data.acousticEnergy.E1; else E1=data.acousticEnergy.E1_smoothed; end
+                if ~isfield(data.acousticEnergy,'E2_smoothed')||isempty(data.acousticEnergy.E2_smoothed), E2=data.acousticEnergy.E2; else E2=data.acousticEnergy.E2_smoothed; end
+                [data.acousticEnergy.scenter_t,data.acousticEnergy.scenter1] = flvideo_estimateacousticpcenter(data.acousticEnergy.t,E1);
+                [data.acousticEnergy.scenter_t,data.acousticEnergy.scenter2] = flvideo_estimateacousticpcenter(data.acousticEnergy.t,E2);
+            end
+            x = data.acousticEnergy.scenter_t;
+            if data.audioSignalSelect==1, y = data.acousticEnergy.scenter1;
+            else y = data.acousticEnergy.scenter2;
+            end
         end
         if 1 % selects largest value within 120ms window around cursor
             smoothPeak=.120; 
