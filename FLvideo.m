@@ -287,8 +287,9 @@ function FLvideo(videoFile)
         
         % Create a panel for the control buttons
         data.handles_hFig = hFig;
+        if ismac, ALT='OPTION'; else ALT='ALT'; end
         uicontrol(hFig,'style','pushbutton','units','norm','position',[.95,.95,.05,.05],'string','?','backgroundcolor','w','callback',...
-            @(varargin)uicontrol('units','norm','position',[.1 .1 .8 .8],'style','text','string',{'KEYBOARD SHORTCUTS:',' ','  mouse click : shows time value at the cursor location','  mouse click & drag : selects time window and zoom-in', '  press SHIFT : snaps cursor to closest valley (local minimum) in the plot displayed under the cursor','  press ALT/OPTION : snaps cursor to closest peak (local maximum) in the plot displayed under the cursor','  press <P> : snaps cursor to closest acoustic p-center','  press CTRL + mouse click&drag : zoom in & out in all plots'},'horizontalalignment','left','backgroundcolor','w','parent',figure('units','norm','position',[.4 .4 .5 .2],'name','FLvide help','MenuBar', 'none', 'NumberTitle', 'off', 'color','w')));
+            @(varargin)uicontrol('units','norm','position',[.05 .05 .9 .9],'style','text','string',{'KEYBOARD SHORTCUTS:',' ','  mouse click : shows time value at the cursor location','  mouse click & drag : selects time window and zoom-in', '  press SHIFT : snaps cursor to closest valley (local minimum) in the plot displayed under the cursor',['  press ',ALT,' : snaps cursor to closest peak (local maximum) in the plot displayed under the cursor'],['  press SHIFT+',ALT,' : snaps cursor to closest threshold/orthographic boundaries in the plot displayed under the cursor'], '  press <P> : snaps cursor to closest acoustic p-center','  press CTRL + mouse click&drag : zoom in & out in all plots'},'horizontalalignment','left','backgroundcolor','w','parent',figure('units','norm','position',[.4 .4 .5 .2],'name','FLvide help','MenuBar', 'none', 'NumberTitle', 'off', 'color','w')));
         data.handles_buttonPanel = uipanel('Position', [0, 0, 1, 0.15], 'Parent', hFig); % Slightly shorter panel for two rows of buttons
 
         % Top row: Playback buttons
@@ -1242,20 +1243,22 @@ function FLvideo(videoFile)
                     textgridLabels(n).intervals = textgridLabels(n).intervals-startSample/data.SampleRate; 
                     textgridLabels(n).labels = textgridLabels(n).labels(mask);
                 end
+                suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','_edited.mp4');
             case 'full'
                 startFrame = 1;
                 endFrame = data.numFrames;
                 audioClip = data.audioSignal;
                 textgridLabels = data.textgridLabels;
+                suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','.mp4');
             otherwise, error('unrecognized option %s',option)
         end
 
         % Prompt user for output file name
-        suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','_edited.mat');
-        %if data.audioSignalSelect==1, suggestedfileName=regexprep(data.videoFile,'\.[^\.]*$','_edited.mat');
-        %else                          suggestedfileName=regexprep(data.videoFile,'(_denoised)?\.[^\.]*$','_denoised.mat');
-        %end
-        [fileName, filePath] = uiputfile({'*.mat', 'Matlb Video File (*.mat)'; '*.mp4', 'MP4 Video File (*.mp4)'; '*.avi', 'AVI Video File (*.avi)'; '*', 'All Files (*.*)'}, 'Save Video Clip As', suggestedfileName);
+        if 1, % change to "if 0," to fix missing-suggested-filename bug?
+            [fileName, filePath] = uiputfile({'*.mp4', 'MP4 Video File (*.mp4)'; '*.mat', 'Matlb Video File (*.mat)'; '*.avi', 'AVI Video File (*.avi)'; '*.*', 'All Files (*.*)'}, 'Save Video Clip As', suggestedfileName);
+        else
+            [fileName, filePath] = uiputfile(suggestedfileName,'Save Video Clip As');
+        end
         if fileName == 0
             disp('Saving cancelled.');
             return;
