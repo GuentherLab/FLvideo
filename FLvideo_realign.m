@@ -1,0 +1,418 @@
+function FLvideo_realign(files,varargin)
+% FLVIDEO_REALIGN
+% Corrects possible temporal misalignment between video frames and audio in rtMRI video files
+%
+% FLvideo_realign(videoFile)
+% Creates a new version of the same video file (named realigned_[ORIGINALVIDEOFILENAME]) with possible audio delay corrected
+% INPUTS:
+%     videoFile     : input video filename (if this input is a list / cell array FLvideo_realign will process separately each file in this list)
+% OUTPUTS:
+%     Corrected video file saved at realigned_[FILENAME].mp4   (this file is not created when 'save' is set to false)
+%     Optimal delay value saved at realigned_[FILENAME].json   (this file is not created when 'save' is set to false)
+%     Optimization details saved at realigned_[FILENAME].jpg   (this file is not created when 'print' is set to false)
+%
+% FLvideo_realign(videoFile, optionName1, optionValue1, optionName2, optionValue2, ...)
+% Specifies additional options as option-name and option-value pairs. Valid option names are:
+%    tau            : extent of delay search in #-of-videoframes units (default -100:100)
+%    regularization : regularization towards apriori delay distribution (standard deviation of apriori distribution of expected delay values - in #-of-videoframes units) (default 50)
+%    splithalf      : set to true to split original video in two parts and evaluate delay separately in each part (default false)
+%    disp           : set to false to skip displaying image of delay optimization results (default true)
+%    print          : set to false to skip creation of .jpg image with display of delay optimization results (default true)
+%    save           : set to false to skip creation of audio-delay-corrected video file (default true)
+%    delay          : set to value of audio delay (in seconds); this will skip the 4optimization procedure and use the user-entered delay value instead when creating the audio-delay-corrected output file (default [])
+%    pause          : set to true to pause (wait for user to hit ENTER) after each plot
+%    convertavi     : if video files are in an unrecognized AVI format, setting convertavi to true will convert the original .avi files into .mp4 before proceeding
+%
+% e.g. 
+% FLvideo_realign('S13_vol_8115-0010_movie.mp4', 'print', true);
+%
+
+
+options=struct(...
+    'tau',-100:100,...      % extent of delay search (in #-of-videoframes units)
+    'regularization',50,... % regularization towards apriori delay distribution (std of normal distribution with mean zero modeling expected delay values - in #-of-videoframes units)
+    'width',30:-1:1,...     % multi-scale search pattern (size of smoothing kernel at each scale level - in #-of-videoframes units)
+    'splithalf',false,...
+    'print',true,...
+    'disp',true,...
+    'delay',[],...
+    'pause',false,...
+    'save',true,...
+    'convertavi',[]);
+for n=1:2:numel(varargin)-1, toptions=fieldnames(options); assert(isfield(options,lower(varargin{n})),'unrecognized option %s (valid options %s)',varargin{n},sprintf('%s ',toptions{:})); options.(lower(varargin{n}))=varargin{n+1}; end
+
+if isempty(files), return; end
+if options.print, options.disp=true; end
+if ischar(files)&&any(files=='*'), 
+    f=dir(files);
+    files=arrayfun(@(i)fullfile(f(i).folder,f(i).name),find(~[f.isdir]),'uni',0);
+    fprintf('Found %d files\n',numel(files));
+end
+if ischar(files), files={files}; end
+[nill,fname,nill]=cellfun(@fileparts,files,'UniformOutput',false);
+fname=regexprep(fname,'_',' ');
+
+if options.splithalf, HIDX=[1:2,0];
+else HIDX=0;
+end
+if options.disp, hfig=figure; end
+
+IDX=1:numel(files);
+TALL=[];
+DelaySummary={};
+
+for idx=IDX
+    videoFile=files{idx};
+    [outputPath,outputName,outputExt]=fileparts(videoFile);
+
+    try
+        [audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+    catch me
+        if ~isempty(options.convertavi)&&options.convertavi, outputfile=regexprep(videoFile,'\.avi$','.mp4');
+        elseif ~isempty(options.convertavi), rethrow(me);
+        else
+            answer = questdlg({'Unable to load AVI file','Do you like to convert it first to mp4 format?'},'avi format','Yes (same filename)','Yes (temporal filename)','No','No');
+            switch(answer)
+                case 'Yes (same filename)', outputfile=regexprep(videoFile,'\.avi$','.mp4');
+                case 'Yes (temporal filename)', outputfile=fullfile(pwd,'VidTest_temporalfile_video.mp4');
+                otherwise, rethrow(me);
+            end
+        end
+        if ispc
+            args_ffmpeg=sprintf('-y -i "%s" -c:v libx264 -crf 18 -preset slow -vsync 1 -c:a pcm_s16le "%s"', videoFile, outputfile);
+            %args_ffmpeg=sprintf('-y -i "%s" -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k "%s"', videoFile,outputfile);
+            cmd='ffmpeg'; args=args_ffmpeg;
+            [ko,msg]=system('where ffmpeg');
+            if ko==0 % try merging using ffmpeg
+                [ko,msg]=system(sprintf('%s %s', cmd, args))
+                if ko~=0,
+                    disp(sprintf('%s %s', cmd, args));
+                    disp(msg);
+                end
+                disp(['Clip saved to: ', outputfile]);
+            else
+                disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add its location to your system PATH');
+            end
+        else
+            args_ffmpeg=sprintf('-y -i ''%s'' -c:v libx264 -crf 18 -preset slow -vsync 1 -c:a pcm_s16le ''%s''', videoFile, outputfile);
+            %args_ffmpeg=sprintf('-y -i ''%s'' -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k ''%s''', videoFile,outputfile);
+            cmd='ffmpeg'; args=args_ffmpeg;
+            [ko,msg]=system('which ffmpeg');
+            if ko~=0 && exist('/usr/local/bin/ffmpeg','file'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+            if ko~=0 && exist('/Applications/ffmpeg','file'), ko=0; cmd='/Applications/ffmpeg'; end
+            if ko==0 % try merging using ffmpeg
+                [ko,msg]=system(sprintf('%s %s', cmd, args));
+                if ko~=0,
+                    disp(sprintf('%s %s', cmd, args));
+                    disp(msg);
+                end
+                disp(['Clip saved to: ', outputfile]);
+            else
+                if ismac, disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add it to the Applications folder');
+                else disp('Sorry, unable to find FFMPEG on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
+                end
+            end
+        end
+        videoFile=outputfile;
+        [audioSignal, audioFs] = audioread(videoFile);
+        %system('ffmpeg -i vol_8115-0006_movie.avi -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 128k vol_8115-0006_movie.mp4');
+        %system('ffmpeg -i vol_8115-0006_movie.avi -c:v libx264 -c:a aac -crf 23 -preset medium vol_8115-0006_movie.mp4');
+    end
+    %[audioSignal, audioFs] = audioread(videoFile); % Read audio from the video
+    audioSignal=audioSignal(:,1); % mono audio track
+
+
+    % Create a VideoReader object
+    v = VideoReader(videoFile);
+
+    % Check video properties
+    if false&&options.disp
+        disp(['Duration: ', num2str(v.Duration), ' seconds (',num2str(v.numFrames), ' frames)']);
+        disp(['Video Frame Rate: ', num2str(v.FrameRate), ' fps']);
+        disp(['Video Resolution: ', num2str(v.Width), 'x', num2str(v.Height)]);
+        disp(['Audio Sample Rate: ', num2str(audioFs)]);
+        try, disp(['Audio Format: ', v.AudioFormat]); end % Audio information, if available
+    end
+
+    % Get total frames of video
+    numFrames = v.NumFrames; %floor(v.Duration * v.FrameRate); % NOTE: v.Duration is not an integer multiple of 1/FrameRate
+    FrameRate = v.FrameRate; %numFrames/v.Duration;
+
+    totalDuration = max(length(audioSignal)/audioFs, v.Duration);
+    XLim = [0 totalDuration];
+
+    % Preload frames into cache
+    timeCache = [];
+    frameCache = cell(1, numFrames);
+    for i = 1:numFrames
+        frameCache{i} = read(v, i);
+        timeCache(i)=v.CurrentTime;
+    end
+    videoSignal=cat(4,frameCache{:});
+    t1=numel(audioSignal)/audioFs;
+    t2=size(videoSignal,4)/FrameRate;
+    clear dV dA;
+    for k=1:size(videoSignal,4)-1
+        % video diff
+        dV(k) = mean(mean(mean(abs(videoSignal(:,:,:,k+1)-videoSignal(:,:,:,k)).^2)));
+        % audio diff
+        t1 = round(k/FrameRate*audioFs+(-3/FrameRate*audioFs:0/FrameRate*audioFs)); t1=max(t1,1-t1); t1=min(t1,2*numel(audioSignal)+1-t1); s1 = audioSignal(t1).*hanning(numel(t1));
+        t2 = round(k/FrameRate*audioFs+(-0/FrameRate*audioFs:3/FrameRate*audioFs)); t2=max(t2,1-t2); t2=min(t2,2*numel(audioSignal)+1-t2); s2 = audioSignal(t2).*hanning(numel(t2));
+        %t1 = round(k/FrameRate*audioFs+(-4/FrameRate*audioFs:-2/FrameRate*audioFs)); t1=max(t1,1-t1); t1=min(t1,2*numel(audioSignal)+1-t1); s1 = audioSignal(t1).*hanning(numel(t1));
+        %t2 = round(k/FrameRate*audioFs+(2/FrameRate*audioFs:4/FrameRate*audioFs)); t2=max(t2,1-t2); t2=min(t2,2*numel(audioSignal)+1-t2); s2 = audioSignal(t2).*hanning(numel(t2));
+        dA(k) = mean(abs( (abs(fft(s1)))-(abs(fft(s2))) ).^2);
+    end
+
+    k=cumsum(sqrt(dA));
+    kHALF=sum(k<=k(end)/2);
+    if options.disp
+        hax1=subplot(211,'parent',hfig); plot((0:numel(audioSignal)-1)/audioFs,audioSignal,'parent',hax1); axis(hax1,'tight'); xlabel(hax1,'time (s)'); ylabel(hax1,'waveform');
+        hright=patch([kHALF/FrameRate kHALF/FrameRate get(gca,'xlim')*[0;1]*[1 1]], get(gca,'ylim')*[1 0 0 1;0 1 1 0],'w','facealpha',.9,'edgecolor','none','parent',hax1);
+        hleft=patch([0 0 kHALF/FrameRate kHALF/FrameRate], get(gca,'ylim')*[1 0 0 1;0 1 1 0],'w','facealpha',.9,'edgecolor','none','parent',hax1);
+        hax2=subplot(212,'parent',hfig);
+        xlabel(hax2,'Audio delay (s)');
+    end
+
+    %w=ones(numel(dA),1);
+    %%w=sin(linspace(0,pi,numel(dA))');
+    %dA=.01+w'.*dA;
+    %dV=.01+w'.*dV;
+
+    for hidx=HIDX
+        TAU=options.tau;
+        OPTIMTAU=find(TAU==0);
+        for width=options.width, 
+            da=dA;
+            dv=dV;
+            switch(hidx)
+                case 0, % entire signal
+                    if options.disp, set(hleft,'visible','off');set(hright,'visible','off'); end
+                case 1, % first half
+                    if options.disp, set(hleft,'visible','off');set(hright,'visible','on'); end
+                    da=da(1:kHALF);
+                    dv=dv(1:kHALF);
+                case 2, % second half
+                    if options.disp, set(hleft,'visible','on');set(hright,'visible','off'); end
+                    da=da(kHALF+1:end);
+                    dv=dv(kHALF+1:end);
+            end
+            da=tanh(.25*(da-prctile(da,50))/(prctile(da,75)-prctile(da,25)));
+            dv=tanh(.25*(dv-prctile(dv,50))/(prctile(dv,75)-prctile(dv,25)));
+            da = convn(da,hanning(width)','same');
+            dv = convn(dv,hanning(width)','same');
+            r=[];
+            for n=1:numel(TAU)
+                tda=da(max(1,min(numel(da), (1:numel(da))+TAU(n))))'; % note: positive TAU means video movement precedes audio movement, negative TAU means audio movement precedes video movement
+                tdv=dv';
+                r(n)=corr(tda,tdv);
+            end
+            if ~isempty(options.regularization)&&options.regularization~=0
+                r=r.*exp(-.5*abs(TAU).^2/options.regularization^2);
+            end
+            if isempty(OPTIMTAU), [nill,OPTIMTAU]=max(r);
+            elseif r(min(numel(r),OPTIMTAU+1))>r(OPTIMTAU)&&r(min(numel(r),OPTIMTAU+1))>=r(max(1,OPTIMTAU-1))>r(OPTIMTAU), OPTIMTAU=OPTIMTAU+1;
+            elseif r(max(1,OPTIMTAU-1))>r(OPTIMTAU), OPTIMTAU=OPTIMTAU-1;
+            end
+            if options.disp, 
+                plot(TAU/FrameRate,r); hold(hax2,'on'); plot(TAU(OPTIMTAU)/FrameRate,r(OPTIMTAU),'.','parent',hax2);
+                drawnow
+            end
+        end
+        if OPTIMTAU>1&&OPTIMTAU<numel(r)
+            [rmax,ridx]=parabmax(r(OPTIMTAU-2:OPTIMTAU+2));
+            OPTIMDELAY=interp1(1:numel(TAU),TAU,OPTIMTAU+ridx-3)/FrameRate;
+        else OPTIMDELAY=TAU(OPTIMTAU)/FrameRate; rmax=r(OPTIMTAU);
+        end
+        if options.disp, 
+            plot(OPTIMDELAY,rmax,'o','parent',hax2); 
+            hold(hax2,'off'); grid(hax2,'on'); xline(hax2,OPTIMDELAY);
+            if options.splithalf&&hidx==1, title(hax2,sprintf('%s (first half): estimated audio delay = %dms',fname{idx},round(1000*OPTIMDELAY))); fprintf('%s (first half): estimated audio delay = %fs\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
+            elseif options.splithalf&&hidx==2, title(hax2,sprintf('%s (second half): estimated audio delay = %dms',fname{idx},round(1000*OPTIMDELAY))); fprintf('%s (second half): estimated audio delay = %fs\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
+            else title(hax2,sprintf('%s: estimated audio delay = %dms',fname{idx},round(1000*OPTIMDELAY))); fprintf('%s: estimated audio delay = %fs\n',regexprep(videoFile,'.*[\\\/]',''),OPTIMDELAY);
+            end
+            axis(hax2,'tight');            
+            xlabel(hax2,'Audio delay (s)');
+            ylabel(hax2,'AV match');
+        end        
+        if options.print
+            if options.splithalf&&hidx==1, print(hfig,'-djpeg90','-r600','-opengl',fullfile(outputPath,['realigned_',outputName,'_half1.jpg']));
+            elseif options.splithalf&&hidx==2, print(hfig,'-djpeg90','-r600','-opengl',fullfile(outputPath,['realigned_',outputName,'_half2.jpg']));
+            else print(hfig,'-djpeg90','-r600','-opengl',fullfile(outputPath,['realigned_',outputName,'.jpg']));
+            end
+        end
+
+        TALL=[TALL; OPTIMDELAY];
+        switch(hidx)
+            case 0, hlabel='entire clip';
+            case 1, hlabel='first half';
+            case 2, hlabel='second half';
+        end
+        DelaySummary(end+1,:)={regexprep(videoFile,'.*[\\\/]',''),hlabel,OPTIMDELAY,1000*OPTIMDELAY};
+        if options.pause, pause; end
+    end
+
+    if options.save
+        if ~isempty(options.delay), OPTIMDELAY=optims.delay; end
+        outputSignal=audioSignal(max(1,round(OPTIMDELAY*audioFs):numel(audioSignal)));
+        outputFile=fullfile(outputPath,['realigned_',outputName,'.mp4']);
+        tempfilekey=[datestr(now,'HHMMSSFFF'),regexprep(char(matlab.lang.internal.uuid),'-','')];
+        tempfile_video=fullfile(pwd,['FLvideo_temporalfile_video_',tempfilekey,'.mp4']);
+        tempfile_audio=fullfile(pwd,['FLvideo_temporalfile_audio_',tempfilekey,'.wav']);
+        if exist(outputFile,'file'), delete(outputFile); end
+        % Write video
+        writer = VideoWriter(tempfile_video,'MPEG-4');
+        writer.FrameRate=FrameRate;
+        open(writer);
+        for i = 1:numFrames
+            frame = frameCache{i};
+            if rem(size(frame,1),8), frame=cat(1,frame,frame(end+zeros(1,8-rem(size(frame,1),8)),:,:)); end
+            if rem(size(frame,2),8), frame=cat(2,frame,frame(:,end+zeros(1,8-rem(size(frame,1),8)),:)); end
+            writeVideo(writer, frame);
+        end
+        close(writer);
+        % Write separate audio track and merge
+        SampleRate=audioFs;
+        if ~ismember(SampleRate,[44100,48000]) % resample audio to 44100 or 48000 for compatibility across platforms
+            if ismember(SampleRate,[11025, 22050]), SampleRate=44100;
+            else SampleRate=48000;
+            end
+            %disp(['Clip audio resampled from ', num2str(audioFs), 'Hz to ',num2str(SampleRate),'Hz']);
+            audioClip=interpft(outputSignal,round(length(outputSignal)*SampleRate/audioFs));
+        end
+        audiowrite(tempfile_audio, audioClip, SampleRate);
+        if ispc
+            args_ffmpeg=sprintf('-y -i "%s" -i "%s" -c:v copy -c:a aac -b:a 192k -async 1 "%s"', tempfile_video,tempfile_audio, outputFile);
+            args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout="#transcode{acodec=mp4a,ab=192}:gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+            %args_ffmpeg=sprintf('-i "%s" -i "%s" -c:v copy -c:a copy "%s"', tempfile_video,tempfile_audio, outputFile);
+            %args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+            cmd='ffmpeg'; args=args_ffmpeg;
+            [ko,msg]=system('where ffmpeg');
+            if ko~=0
+                cmd='vlc'; args=args_vlc;
+                [ko,msg]=system('where vlc');
+            end
+            if ko==0 % try merging using ffmpeg or VLC
+                [ko,msg]=system(sprintf('%s %s', cmd, args))
+                if ko~=0,
+                    disp(sprintf('%s %s', cmd, args));
+                    disp(msg);
+                end
+                fprintf('Clip saved to %s with audio delayed by %dms\n', outputFile, round(1000*OPTIMDELAY));
+            else
+                disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add its location to your system PATH');
+            end
+        else
+            args_ffmpeg=sprintf('-y -i ''%s'' -i ''%s'' -c:v copy -c:a aac -b:a 192k -async 1 ''%s''', tempfile_video,tempfile_audio, outputFile);
+            args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout="#transcode{acodec=mp4a,ab=192}:gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+            %args_ffmpeg=sprintf('-i ''%s'' -i ''%s'' -c:v copy -c:a copy ''%s''', tempfile_video,tempfile_audio, outputFile);
+            %args_vlc=sprintf('-I dummy ''%s'' --input-slave=''%s'' --sout "#gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
+            cmd='ffmpeg'; args=args_ffmpeg;
+            [ko,msg]=system('which ffmpeg');
+            if ko~=0 && exist('/usr/local/bin/ffmpeg','file'), ko=0; cmd='/usr/local/bin/ffmpeg'; end
+            if ko~=0 && exist('/Applications/ffmpeg','file'), ko=0; cmd='/Applications/ffmpeg'; end
+            if ko~=0
+                cmd='vlc'; args=args_vlc;
+                [ko,msg]=system('which vlc');
+                if ko~=0 && exist('/usr/local/bin/vlc','file'), ko=0; cmd='/usr/local/bin/vlc'; end
+                if ko~=0 && exist('/Applications/vlc','file'), ko=0; cmd='/Applications/vlc'; end
+                if ko~=0 && exist('/Applications/VLC.app','file'), ko=0; cmd='/Applications/VLC.app/Contents/MacOS/VLC'; end
+            end
+            if ko==0 % try merging using ffmpeg
+                [ko,msg]=system(sprintf('%s %s', cmd, args));
+                if ko~=0,
+                    disp(sprintf('%s %s', cmd, args));
+                    disp(msg);
+                end
+                fprintf('Clip saved to %s with audio delayed by %dms\n', outputFile, round(1000*OPTIMDELAY));
+            else
+                if ismac, disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the Applications folder');
+                else disp('Sorry, unable to find FFMPEG or VLC on your system. Please install FFMPEG and add it to the /usr/local/bin/ folder');
+                end
+            end
+        end
+        try
+            delete(tempfile_video);
+            delete(tempfile_audio);
+        end
+        fh=fopen(fullfile(outputPath,['realigned_',outputName,'.json']),'wt');
+        fprintf(fh,'{\n');
+        fprintf(fh,'  "delay": %.3f\n',OPTIMDELAY);
+        fprintf(fh,'}\n');
+        fclose(fh);
+    end
+end
+
+if options.disp&&numel(files)>1
+    clf(hfig);
+    hax=axes('units','norm','position',[.2 .5 .6 .3],'parent',hfig);
+    if options.splithalf, 
+        tall=reshape(TALL,3,[]);
+        bar(tall','parent',hax); 
+        set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
+        try, a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5); end
+        legend('first half','second half','whole clip','location','northeastoutside');
+    else 
+        bar(TALL,'parent',hax); 
+        set(hax,'xtick',1:numel(files),'xticklabel',fname); set(hax,'XTickLabelRotation',-90,'ticklabelinterpreter','none'); 
+        try, a=cellfun(@(x)x(1:3),fname,'uni',0); xline(find(~strcmp(a(1:end-1),a(2:end)))+.5); end
+    end
+    ylabel('Estimated lag (s)');
+    if options.splithalf,
+        fprintf('Within/Between variability = %f\n', mean(std(tall,0,1))/std(mean(tall,1)));
+    end
+    if options.print
+        print(hfig,'-djpeg90','-r600','-opengl',fullfile(outputPath,['FLvideo_realign_summary_',datestr(now,'dd-mmm-yyyy-HH-MM-SS'),'.jpg']));
+    end
+    if ~isempty(DelaySummary)
+        fprintf('\n\nSummary of optimal delays\n');
+        fprintf('File\tSegment\tDelay_ms\n');
+        for n=1:size(DelaySummary,1)
+            fprintf('%s\t%s\t%.3f ms\n',DelaySummary{n,1},DelaySummary{n,2},DelaySummary{n,4});
+        end
+    end
+end
+
+end
+
+function w=hanning(n);
+if ~rem(n,2),%even
+    w = .5*(1 - cos(2*pi*(1:n/2)'/(n+1))); 
+    w=[w;flipud(w)];
+else,%odd
+   w = .5*(1 - cos(2*pi*(1:(n+1)/2)'/(n+1)));
+   w = [w; flipud(w(1:end-1))];
+end
+end
+
+function [w,idx] = parabmax(R,dim)
+% parabolic interpolation max
+% [x_max, idx] = parabmax(x);
+% returns the interpolated maximum value x_max
+% and the interpolated index to the maximum value.
+%
+% for matrices: [x_max, idx] = parabmax(x,dim);
+% computes the maximum along the dim dimension 
+% (note: only 2D matrices)
+%
+
+sR=size(R);
+if nargin<2, dim=find(sR>1,1); end
+if isempty(dim); dim=1; end
+if dim~=1, R=permute(R,[dim,2:dim-1,1,dim+1:numel(sR)]); end
+[w,idx]=max(R,[],1);
+valid=idx>1&idx<size(R,1);
+w3=R(max(1,min(size(R,1), repmat(idx,3,1)+repmat((-1:1)',1,numel(idx))))+(0:size(R,2)-1)*size(R,1)); % parabolic peak-height interpolation
+k=(2*w3(2,:)-w3(3,:)-w3(1,:));
+valid=valid&k>0;
+w(valid)=w3(2,valid)+(w3(1,valid)-w3(3,valid)).^2./k(valid)/8;
+idx(valid)=idx(valid)+(w3(3,valid)-w3(1,valid))./k(valid)/2;
+
+if dim~=1, 
+    w=permute(w,[dim,2:dim-1,1,dim+1:numel(sR)]); 
+    idx=permute(idx,[dim,2:dim-1,1,dim+1:numel(sR)]); 
+end
+end
+
+
+
+
