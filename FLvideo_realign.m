@@ -277,9 +277,9 @@ for idx=IDX
             else SampleRate=48000;
             end
             %disp(['Clip audio resampled from ', num2str(audioFs), 'Hz to ',num2str(SampleRate),'Hz']);
-            audioClip=interpft(outputSignal,round(length(outputSignal)*SampleRate/audioFs));
+            outputSignal=interpft(outputSignal,round(length(outputSignal)*SampleRate/audioFs));
         end
-        audiowrite(tempfile_audio, audioClip, SampleRate);
+        audiowrite(tempfile_audio, outputSignal, SampleRate);
         if ispc
             args_ffmpeg=sprintf('-y -i "%s" -i "%s" -c:v copy -c:a aac -b:a 192k -async 1 "%s"', tempfile_video,tempfile_audio, outputFile);
             args_vlc=sprintf('-I dummy "%s" --input-slave="%s" --sout="#transcode{acodec=mp4a,ab=192}:gather:std{access=file,mux=mp4,dst=%s}" vlc://quit', tempfile_video,tempfile_audio, outputFile);
