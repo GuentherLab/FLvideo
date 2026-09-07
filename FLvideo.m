@@ -235,9 +235,21 @@ function FLvideo(videoFile)
                         % Preload frames into cache
                         %timeCache = [];
                         frameCache = cell(1, numFrames);
+                        histx=0;
                         for i = 1:numFrames
-                            frameCache{i} = read(v, i);
+                            temp = read(v, i);
+                            if isa(temp,'uint8')&&size(temp,3)==3, temp=uint8(round(mean(temp,3))); end % note: rgb to gray
+                            %if isa(temp,'uint8'), histx=histx+accumarray(temp(temp>0),1,[255,1]); end % note: histogram equalization
+                            frameCache{i} = temp;
                             %timeCache(i)=v.CurrentTime;
+                        end
+                        if ~isequal(histx,0), % histogram equalization
+                            histx = cumsum(histx);
+                            histx  = uint8(round(255*histx/histx(end)));
+                            for i=1:numFrames,
+                                mask=frameCache{i}>0;
+                                frameCache{i}(mask)=histx(frameCache{i}(mask));
+                            end
                         end
                 end
                 isready='on';
@@ -391,25 +403,27 @@ function FLvideo(videoFile)
                 % Calculate global motion based on pixel differences
                 globalMotionVel = zeros(1, numFrames - 1); % Preallocate for speed
                 globalMotionAcc = globalMotionVel;
-                frameMotionVel={};
-                frameMotionAcc={};
-                maxframeMotion=0;
-                maxframeMotion2=0;
+                %frameMotionVel={};
+                %frameMotionAcc={};
+                maxframeMotionVel=0;
+                %maxframeMotionAcc=0;
                 for i = 1:numFrames - 1
-                    frame1 = double(rgb2gray(frameCache{i})); % Convert frame to grayscale
-                    frame2 = double(rgb2gray(frameCache{i + 1})); % Convert next frame to grayscale
-                    frameMotionVel{i}=abs(frame1 - frame2).^2;
-                    maxframeMotion=max(maxframeMotion,max(frameMotionVel{i}(:)));
-                    globalMotionVel(i) = mean(frameMotionVel{i}(:)); % Compute mean of absolute values squared (MS)
+                    frame1 = double(frameCache{i});
+                    frame2 = double(frameCache{i+1});
+                    dframe = abs(frame1 - frame2);
+                    %frameMotionVel{i}=uint8(dframe);
+                    maxframeMotionVel=max(maxframeMotionVel,max(dframe(:)));
+                    globalMotionVel(i) = mean(dframe(:).^2); % Compute mean of absolute values squared (MS)
 
-                    if i>1, frame0 = double(rgb2gray(frameCache{i-1})); else frame0 = frame1; end
-                    if i<numFrames-1, frame3 = double(rgb2gray(frameCache{i+2})); else frame3 = frame2; end
-                    frameMotionAcc{i}=abs( (frame0 - frame1 - frame2 + frame3)/2 ).^2;
-                    maxframeMotion2=max(maxframeMotion2,max(frameMotionAcc{i}(:)));
-                    globalMotionAcc(i) = mean(frameMotionAcc{i}(:)); % Compute mean of absolute values squared (MS)
+                    if i>1, frame0 = double(frameCache{i-1}); else frame0 = frame1; end
+                    if i<numFrames-1, frame3 = double(frameCache{i+2}); else frame3 = frame2; end
+                    dframe = abs( (frame0 - frame1 - frame2 + frame3)/2 );
+                    %frameMotionAcc{i}=uint8(dframe);
+                    %maxframeMotionAcc=max(maxframeMotionAcc,max(dframe(:)));
+                    globalMotionAcc(i) = mean(dframe(:).^2); % Compute mean of absolute values squared (MS)
                 end
-                frameMotionVel=cellfun(@(x)x/maxframeMotion,frameMotionVel,'uni',0);
-                frameMotionAcc=cellfun(@(x)x/maxframeMotion2,frameMotionAcc,'uni',0);
+                %frameMotionVel=cellfun(@(x)x/maxframeMotionVel,frameMotionVel,'uni',0);
+                %frameMotionAcc=cellfun(@(x)x/maxframeMotionAcc,frameMotionAcc,'uni',0);
                 globalMotionVel=interpft(globalMotionVel,length(audioSignal)); % resample to audio sampling rate (NOTE: sinc interpolation)
                 globalMotionAcc=interpft(globalMotionAcc,length(audioSignal));
                 dataspectrogram=[];
@@ -427,8 +441,10 @@ function FLvideo(videoFile)
             else
                 globalMotionVel=data.globalMotionVel;
                 globalMotionAcc=data.globalMotionAcc;
-                frameMotionVel=data.frameMotionVel;
-                frameMotionAcc=data.frameMotionAcc;
+                %frameMotionVel=data.frameMotionVel;
+                %frameMotionAcc=data.frameMotionAcc;
+                maxframeMotionVel=data.maxframeMotionVel;
+                %maxframeMotionAcc=data.maxframeMotionAcc;
                 dataspectrogram=data.spectrogram;
                 dataharmonicRatio=data.harmonicRatio;
                 dataacousticEnergy=data.acousticEnergy;
@@ -555,8 +571,10 @@ function FLvideo(videoFile)
             data.SampleQueue = 0;
             data.hVideo = hVideo;
             data.frameCache = frameCache;
-            data.frameMotionVel=frameMotionVel;
-            data.frameMotionAcc=frameMotionAcc;
+            %data.frameMotionVel=frameMotionVel;
+            %data.frameMotionAcc=frameMotionAcc;
+            data.maxframeMotionVel=maxframeMotionVel;
+            %data.maxframeMotionAcc=maxframeMotionAcc;
             data.globalMotionVel=globalMotionVel;
             data.globalMotionAcc=globalMotionAcc;
             data.spectrogram = dataspectrogram;
@@ -1454,22 +1472,21 @@ function FLvideo(videoFile)
     end
 
     function frame = getframeCache(currentFrameIndex) % mixes video frame image with motion highlight
-        frame = data.frameCache{currentFrameIndex};
+        frame = double(data.frameCache{currentFrameIndex});
         if data.motionHighlight>1, 
             colors=[0 0 0; 1 0 0; 1 1 0];
             color=colors(data.motionHighlight,:);
-            if 0, %~ismember({'Acceleration of Movements'},data.allPlotMeasures(data.plotMeasure)) % by default shows velocity of motion (unless acceleration timecourse is being displayed?)
-                if currentFrameIndex==1, dframe=sqrt(data.frameMotionVel{currentFrameIndex});
-                elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotionVel{currentFrameIndex-1});
-                else dframe=sqrt((data.frameMotionVel{currentFrameIndex}+data.frameMotionVel{currentFrameIndex-1})/2);
-                end
-            else
-                if currentFrameIndex==1, dframe=sqrt(data.frameMotionAcc{currentFrameIndex});
-                elseif currentFrameIndex==data.numFrames, dframe=sqrt(data.frameMotionAcc{currentFrameIndex-1});
-                else dframe=sqrt((data.frameMotionAcc{currentFrameIndex}+data.frameMotionAcc{currentFrameIndex-1})/2);
-                end
-            end
-            frame=uint8(cat(3, round((1-dframe).*double(frame(:,:,1))+255*dframe*color(1)), round((1-dframe).*double(frame(:,:,2))+255*dframe*color(2)), round((1-dframe).*double(frame(:,:,3))+255*dframe*color(3)) ));
+            frame0 = double(data.frameCache{max(1,currentFrameIndex-1)})/data.maxframeMotionVel;
+            frame1 = double(data.frameCache{currentFrameIndex})/data.maxframeMotionVel;
+            frame2 = double(data.frameCache{min(numel(data.frameCache),currentFrameIndex+1)})/data.maxframeMotionVel;
+            dframe1 = abs(frame0 - frame1);
+            dframe2 = abs(frame1 - frame2);
+            dframe = sqrt((dframe1.^2+dframe2.^2)/2);
+            % if currentFrameIndex==1, dframe=double(data.frameMotionVel{currentFrameIndex})/data.maxframeMotionVel;
+            % elseif currentFrameIndex==data.numFrames, dframe=double(data.frameMotionVel{currentFrameIndex-1})/data.maxframeMotionVel;
+            % else dframe=sqrt(((double(data.frameMotionVel{currentFrameIndex})/data.maxframeMotionVel).^2+(double(data.frameMotionVel{currentFrameIndex-1})/data.maxframeMotionVel).^2)/2);
+            % end
+            frame=uint8(cat(3, round((1-dframe).*frame+255*dframe*color(1)), round((1-dframe).*frame+255*dframe*color(2)), round((1-dframe).*frame+255*dframe*color(3)) ));
         end
     end
 
@@ -1978,6 +1995,19 @@ end
                 end
         end
     end
+end
+
+function y = flvoice_imagequantize(x)
+% equalize & quantize to uint8
+% input samples are cell or data stacked along 4th dimension
+    iscellx=iscell(x);
+    if iscellx, x=cat(4,x{:}); end
+    [~,~,j] = unique(x(:));
+    n = accumarray(j,1);
+    p = cumsum(n) - n/2;
+    p = (p-p(1))/(p(end)-p(1));
+    y = reshape(uint8(round(255*p(j))),size(x));
+    if iscellx, y=num2cell(y,[1 2 3]); end
 end
 
 
