@@ -141,6 +141,7 @@ function FLvideo(videoFile)
         else         
             data=[];
         end
+        hw=[];
         if ~isempty(videoFile)&&exist(videoFile,'file'),
             try
                 switch(regexprep(videoFile,'^.*\.',''))
@@ -236,11 +237,13 @@ function FLvideo(videoFile)
                         %timeCache = [];
                         frameCache = cell(1, numFrames);
                         histx=0;
+                        hw=waitbar(0,'Loading video, please wait');
                         for i = 1:numFrames
                             temp = read(v, i);
                             if isa(temp,'uint8')&&size(temp,3)==3, temp=uint8(round(mean(temp,3))); end % note: rgb to gray
                             %if isa(temp,'uint8'), histx=histx+accumarray(temp(temp>0),1,[255,1]); end % note: histogram equalization
                             frameCache{i} = temp;
+                            if ishandle(hw)&&~rem(i,100), waitbar(i/numFrames,hw); end
                             %timeCache(i)=v.CurrentTime;
                         end
                         if ~isequal(histx,0), % histogram equalization
@@ -253,7 +256,7 @@ function FLvideo(videoFile)
                         end
                 end
                 isready='on';
-                audioSignalDenoised = filterMRINoise(audioSignal, audioFs);
+                [audioSignalDenoised,hw] = filterMRINoise(audioSignal, audioFs, [], hw);
                 NewData=true;
                 ComputeDerivedMeasures=true;
                 set(hFig, 'name', sprintf('Video Player : %s',videoFile));
@@ -300,7 +303,7 @@ function FLvideo(videoFile)
         % Create a panel for the control buttons
         data.handles_hFig = hFig;
         if ismac, ALT='OPTION'; else ALT='ALT'; end
-        uicontrol(hFig,'style','pushbutton','units','norm','position',[.95,.95,.05,.05],'string','?','backgroundcolor','w','callback',...
+        uicontrol(hFig,'style','pushbutton','units','norm','position',[.98,.98,.02,.02],'string','?','backgroundcolor','w','callback',...
             @(varargin)uicontrol('units','norm','position',[.05 .05 .9 .9],'style','text','string',{'KEYBOARD SHORTCUTS:',' ','  mouse click : shows time value at the cursor location','  mouse click & drag : selects time window and zoom-in', '  press SHIFT : snaps cursor to closest valley (local minimum) in the plot displayed under the cursor',['  press ',ALT,' : snaps cursor to closest peak (local maximum) in the plot displayed under the cursor'],['  press SHIFT+',ALT,' : snaps cursor to closest threshold/orthographic boundaries in the plot displayed under the cursor'], '  press <P> : snaps cursor to closest acoustic p-center','  press CTRL + mouse click&drag : zoom in & out in all plots'},'horizontalalignment','left','backgroundcolor','w','parent',figure('units','norm','position',[.4 .4 .5 .2],'name','FLvide help','MenuBar', 'none', 'NumberTitle', 'off', 'color','w')));
         data.handles_buttonPanel = uipanel('Position', [0, 0, 1, 0.15], 'Parent', hFig); % Slightly shorter panel for two rows of buttons
 
@@ -400,38 +403,15 @@ function FLvideo(videoFile)
         
         if NewData, % Displays video and audio data
             if ComputeDerivedMeasures
-                % Calculate global motion based on pixel differences
-                globalMotionVel = zeros(1, numFrames - 1); % Preallocate for speed
-                globalMotionAcc = globalMotionVel;
-                %frameMotionVel={};
-                %frameMotionAcc={};
-                maxframeMotionVel=0;
-                %maxframeMotionAcc=0;
-                for i = 1:numFrames - 1
-                    frame1 = double(frameCache{i});
-                    frame2 = double(frameCache{i+1});
-                    dframe = abs(frame1 - frame2);
-                    %frameMotionVel{i}=uint8(dframe);
-                    maxframeMotionVel=max(maxframeMotionVel,max(dframe(:)));
-                    globalMotionVel(i) = mean(dframe(:).^2); % Compute mean of absolute values squared (MS)
-
-                    if i>1, frame0 = double(frameCache{i-1}); else frame0 = frame1; end
-                    if i<numFrames-1, frame3 = double(frameCache{i+2}); else frame3 = frame2; end
-                    dframe = abs( (frame0 - frame1 - frame2 + frame3)/2 );
-                    %frameMotionAcc{i}=uint8(dframe);
-                    %maxframeMotionAcc=max(maxframeMotionAcc,max(dframe(:)));
-                    globalMotionAcc(i) = mean(dframe(:).^2); % Compute mean of absolute values squared (MS)
-                end
-                %frameMotionVel=cellfun(@(x)x/maxframeMotionVel,frameMotionVel,'uni',0);
-                %frameMotionAcc=cellfun(@(x)x/maxframeMotionAcc,frameMotionAcc,'uni',0);
+                [globalMotionVel, globalMotionAcc, maxframeMotionVel,hw] = computeMotion(frameCache,hw,[]);
                 globalMotionVel=interpft(globalMotionVel,length(audioSignal)); % resample to audio sampling rate (NOTE: sinc interpolation)
                 globalMotionAcc=interpft(globalMotionAcc,length(audioSignal));
                 dataspectrogram=[];
                 dataacousticEnergy=[];
                 dataharmonicRatio=[];
                 hwindowsize=.040; %40ms;
-                [dataacousticEnergy.t,dataacousticEnergy.E1]=acousticEnergy(audioSignal,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs));
-                [dataacousticEnergy.t,dataacousticEnergy.E2]=acousticEnergy(audioSignalDenoised,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs));
+                [dataacousticEnergy.t,dataacousticEnergy.E1,hw]=acousticEnergy(audioSignal,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs), hw, [0 .5]);
+                [dataacousticEnergy.t,dataacousticEnergy.E2,hw]=acousticEnergy(audioSignalDenoised,audioFs,round(hwindowsize*audioFs),round((hwindowsize-.001)*audioFs), hw, [.5 .5]);
                 dataacousticEnergy.dE1  = gradient(dataacousticEnergy.E1')';
                 dataacousticEnergy.dE2  = gradient(dataacousticEnergy.E2')';
                 dataacousticEnergy.ddE1 = gradient(dataacousticEnergy.dE1')';
@@ -486,8 +466,8 @@ function FLvideo(videoFile)
                 else set(data.handles_otherPanel1(nplot),'xticklabel',[]);
                 end
                 set(data.handles_otherPanel1(nplot), 'xcolor', .5*[1 1 1], 'ycolor', .5*[1 1 1],'box','off');
-                data.handles_otherScalebutton1(nplot)=uicontrol('Style','pushbutton','string', '-', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 nplot]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_otherPanel1(nplot),'ylim',get(data.handles_otherPanel1(nplot),'ylim').*1.25), 'Parent', hFig);
-                data.handles_otherScalebutton2(nplot)=uicontrol('Style','pushbutton','string', '+', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 nplot]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_otherPanel1(nplot),'ylim',get(data.handles_otherPanel1(nplot),'ylim')./1.25), 'Parent', hFig);
+                data.handles_otherScalebutton1(nplot)=uicontrol('Style','pushbutton','string', '▼', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 nplot]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_otherPanel1(nplot),'ylim',get(data.handles_otherPanel1(nplot),'ylim').*1.25), 'Parent', hFig);
+                data.handles_otherScalebutton2(nplot)=uicontrol('Style','pushbutton','string', '▲', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 nplot]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_otherPanel1(nplot),'ylim',get(data.handles_otherPanel1(nplot),'ylim')./1.25), 'Parent', hFig);
 
                 % Create a dedicated axes for all other plots (for image displays)
                 data.handles_otherPanel2(nplot) = axes('Position', [1 nplot]*[0.1, 0.5-0.30/(1+nplots*1.5), 0.8, 0.30/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Parent', hFig);
@@ -551,8 +531,8 @@ function FLvideo(videoFile)
             if nplots==0, xlabel(data.handles_audioPanel, 'Time (s)');
             else set(data.handles_audioPanel,'xtick',[],'xticklabel',[]);
             end
-            data.handles_audioScalebutton1=uicontrol('Style','pushbutton','string', '-', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 0]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_audioPanel,'ylim',get(data.handles_audioPanel,'ylim').*1.25), 'Parent', hFig);
-            data.handles_audioScalebutton2=uicontrol('Style','pushbutton','string', '+', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 0]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_audioPanel,'ylim',get(data.handles_audioPanel,'ylim')./1.25), 'Parent', hFig);
+            data.handles_audioScalebutton1=uicontrol('Style','pushbutton','string', '▼', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 0]*[0.025, 0.5-0.30/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_audioPanel,'ylim',get(data.handles_audioPanel,'ylim').*1.25), 'Parent', hFig);
+            data.handles_audioScalebutton2=uicontrol('Style','pushbutton','string', '▲', 'tooltip','zoom/scale signal up', 'units','norm','Position', [1 0]*[0.025, 0.5-0.15/(1+nplots*1.5), 0.025, 0.15/(1+nplots*1.5); 0 -0.30*1.5/(1+nplots*1.5) 0 0], 'Callback', @(varargin)set(data.handles_audioPanel,'ylim',get(data.handles_audioPanel,'ylim')./1.25), 'Parent', hFig);
             data.handles_audiosignal=uicontrol('Style', 'popupmenu', 'string', {'raw Audio Signal','MRI denoised Audio Signal'}, 'Value', audioSignalSelect, 'units','norm','Position', [0.35, 0.5, 0.3, 0.03], 'Callback', @(src, event) changeAudioSignal(src, event, hFig), 'Parent', hFig);
 
             % Store information in shared "data" variable
@@ -614,6 +594,7 @@ function FLvideo(videoFile)
             data.handles_otherPanel1=[];
             data.handles_otherPanel2=[];
         end
+        if ishandle(hw), close(hw); end
         data.isPlaying=false;
         varargout={data};
     end
@@ -1650,6 +1631,8 @@ function FLvideo(videoFile)
         dE_m(Z > zcrThr) = nan;
     end
 
+
+
     function flvideo_keyfcn(option, src, event, varargin)
         % Get current modifier keys' states
         mdf = get(data.handles_hFig, 'currentmodifier');
@@ -1918,14 +1901,18 @@ else c=isfield(a,b);
 end
 end
 
-function filteredAudio = filterMRINoise(audioSignal, audioFs, targetFreq)
+function [filteredAudio, hw] = filterMRINoise(audioSignal, audioFs, targetFreq, hw)
 % Comb filter: y(t) = x(t) - x(t-delay)
 % optimized delay time to search between f0/2 and 2*f0
-if nargin<3, targetFreq=55; end % target frequency (Hz) (range tested 22.5 to 110)
+if nargin<3||isempty(targetFreq), targetFreq=55; end % target frequency (Hz) (range tested 22.5 to 110)
+if nargin<4, hw=[]; end
 optimPeriod=nan;
 optimValue=inf;
 sample=(1:size(audioSignal,1))';
 N=audioFs./targetFreq;
+if isempty(hw)||~ishandle(hw), hw=waitbar(0,'Filtering audio');
+else waitbar(0,hw,'Filtering audio');
+end
 for nrepeat=1:4
     if nrepeat==1, tryperiods=linspace(N/2,2*N,64);
     elseif nrepeat==2, tryperiods=linspace(optimPeriod*(1-1.5/63),optimPeriod*(1+1.5/63),64);
@@ -1941,6 +1928,7 @@ for nrepeat=1:4
         Value=mean(mean(abs(y).^2,1));
         if Value<optimValue, optimPeriod=PeriodInSamples; optimValue=Value; end
     end
+    waitbar(nrepeat/4,hw);
 end
 filteredAudio=y;
 fprintf('Noise supression: noise fundamental frequency %sHz\n',mat2str(audioFs/optimPeriod,6));
@@ -2068,17 +2056,25 @@ if docentering,
     [nill,idxE]=max(E,[],1);
     idx_X=max(1,min(size(X,1),idx_X+repmat(idxE-1+(idx_k2(1)-idx_k2(round(end/2))),[Wlength,1])));
 end
-if strcmp(lower(Type),'none'), Y=X(idx_X(:),:); else, Y=X(idx_X(:),:).*W(idx_W(:),ones(1,prod(sX(2:end)))); end
+if strcmp(lower(Type),'none'), 
+    if size(X,2)==1, Y=X(idx_X);
+    else Y=X(idx_X(:),:); 
+    end
+else
+    Y=X(idx_X(:),:).*W(idx_W(:),ones(1,prod(sX(2:end))));
+end
 Y=reshape(Y,[Wlength,sY,sX(2:end)]);
 idx_X=idx_X-Base;
 idx_X(idx_X<=0 | idx_X>sX(1))=nan;
 switch(lower(Extent)),
 case {'valid','tight'},
     idx=~all(~isnan(idx_X),1);
-    Y(:,idx,:)=[]; idx_X(:,idx)=[];
+    Y=Y(:,~idx,:); idx_X=idx_X(:,~idx);
+    %Y(:,idx,:)=[]; idx_X(:,idx)=[];
 case 'same',
     idx=isnan(idx_X(1+floor(end/2),:));
-    Y(:,idx,:)=[]; idx_X(:,idx)=[];
+    Y=Y(:,~idx,:); idx_X=idx_X(:,~idx);
+    %Y(:,idx,:)=[]; idx_X(:,idx)=[];
 end
 end
 
@@ -2103,15 +2099,67 @@ end
 if nargin>1&&~isempty(normed)&&normed>0, w=w/sum(w); end
 end
 
-function [t0,e]=acousticEnergy(s,fs,windowlength,overlaplength)
+
+% Calculate global motion based on pixel differences
+function [globalMotionVel, globalMotionAcc, maxframeMotionVel,hw] = computeMotion(frameCache,hw,mask)
+if nargin<2, hw=[]; end
+if nargin<3, mask=[]; end
+if isempty(hw)||~ishandle(hw), hw=waitbar(0,'Computing motion measures');
+else waitbar(0,hw,'Computing motion measures'); 
+end
+numFrames=numel(frameCache);
+globalMotionVel = zeros(1, numFrames - 1); % Preallocate for speed
+globalMotionAcc = globalMotionVel;
+%frameMotionVel={};
+%frameMotionAcc={};
+maxframeMotionVel=0;
+%maxframeMotionAcc=0;
+for i = 1:numFrames - 1
+    frame1 = double(frameCache{i});
+    frame2 = double(frameCache{i+1});
+    dframe = abs(frame1 - frame2);
+    %frameMotionVel{i}=uint8(dframe);
+    maxframeMotionVel=max(maxframeMotionVel,max(dframe(:)));
+    globalMotionVel(i) = mean(dframe(:).^2); % Compute mean of absolute values squared (MS)
+
+    if i>1, frame0 = double(frameCache{i-1}); else frame0 = frame1; end
+    if i<numFrames-1, frame3 = double(frameCache{i+2}); else frame3 = frame2; end
+    dframe = abs( (frame0 - frame1 - frame2 + frame3)/2 );
+    %frameMotionAcc{i}=uint8(dframe);
+    %maxframeMotionAcc=max(maxframeMotionAcc,max(dframe(:)));
+    globalMotionAcc(i) = mean(dframe(:).^2); % Compute mean of absolute values squared (MS)
+    if ishandle(hw)&&~rem(i,100), waitbar(i/numFrames,hw); end
+end
+%frameMotionVel=cellfun(@(x)x/maxframeMotionVel,frameMotionVel,'uni',0);
+%frameMotionAcc=cellfun(@(x)x/maxframeMotionAcc,frameMotionAcc,'uni',0);
+end
+
+% Calculate acoustic energy
+function [t0,e,hw]=acousticEnergy(s,fs,windowlength,overlaplength, hw, scaledisplaytime)
 if nargin<3||isempty(windowlength), windowlength=round(4.5/75*fs); end % from Praat: 4.5 times the minimum pitch (75Hz)
 if nargin<4||isempty(overlaplength), overlaplength=windowlength-max(1,round(0.001*fs)); end
-s2=flvoice_samplewindow(s(:),windowlength,overlaplength,'none','tight');
-Nt=size(s2,2);
+if nargin<5, hw=[]; end
+if nargin<6||isempty(scaledisplaytime), scaledisplaytime=[0 1]; end
 hwindow=flvoice_hanning(windowlength);
-s2=s2.*repmat(hwindow,[1,Nt]);
+Nt=1+floor((numel(s)-windowlength)/(windowlength-overlaplength));
+e=zeros(Nt,1);
+n1=1; t1=1;
+if isempty(hw)||~ishandle(hw), hw=waitbar(scaledisplaytime(1),'Computing acoustic measures');
+else waitbar(scaledisplaytime(1),hw,'Computing acoustic measures'); 
+end
+while t1<=numel(s)-windowlength+1
+    e(n1)=sqrt(mean((hwindow.*s(t1:t1+windowlength-1)).^2));
+    n1=n1+1;
+    t1=t1+windowlength-overlaplength;
+    if ishandle(hw)&&~rem(n1,100), waitbar(scaledisplaytime(1)+scaledisplaytime(2)*n1/Nt,hw); end
+end
 t0=(windowlength/2+(windowlength-overlaplength)*(0:Nt-1)')/fs; % note: time of middle sample within window
-e=sqrt(mean(s2.^2,1))';
+% s2=flvoice_samplewindow(s(:),windowlength,overlaplength,'none','tight');
+% Nt=size(s2,2);
+% hwindow=flvoice_hanning(windowlength);
+% s2=s2.*repmat(hwindow,[1,Nt]);
+% t0=(windowlength/2+(windowlength-overlaplength)*(0:Nt-1)')/fs; % note: time of middle sample within window
+% e=sqrt(mean(s2.^2,1))';
 end
 
 function [w,t0,e]=harmonicRatio(s,fs,windowlength,overlaplength,ampthr)
