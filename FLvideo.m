@@ -1475,7 +1475,7 @@ function FLvideo(videoFile)
         if nargin<1||isempty(handle), handle=gcbo; end
         str=regexprep(get(handle,'string'),'^\s+|\s+$','');
         clipboard('copy', str);
-        fprintf('%s copied to clipboard\n',str);
+        %fprintf('%s copied to clipboard\n',str);
     end
 
     function refTime=flvideo_findlocalminimum(in_ref,refTime)
@@ -1839,8 +1839,8 @@ function FLvideo(videoFile)
                     % else
                     %     % No snap modifiers => keep refTime as-is
                     % end
-                    clipboard('copy', sprintf('%.6f', refTime));
-                    fprintf('t = %.6f s copied to clipboard\n', refTime);
+                    %clipboard('copy', sprintf('%.6f', refTime));
+                    %fprintf('t = %.6f s copied to clipboard\n', refTime);
                     thisFrame(refTime);
                 else % clicked elsewhere
                     data.buttondown_ispressed=0;
